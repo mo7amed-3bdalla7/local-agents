@@ -23,6 +23,8 @@ import {
   skillsRouter,
 } from "./routes/registries.js";
 import { syncFileAgents } from "./sync.js";
+import { syncSkills } from "./skills/sync.js";
+import { workspaceRoot } from "./paths.js";
 import { startWorker, type WorkerHandle } from "./worker.js";
 
 try {
@@ -71,6 +73,9 @@ export function createApp(): Hono {
 async function main() {
   await syncFileAgents().catch((err) =>
     logger.warn("File-agent sync failed", { error: String(err) }),
+  );
+  await syncSkills(workspaceRoot()).catch((err) =>
+    logger.warn("Skill sync failed", { error: String(err) }),
   );
 
   let worker: WorkerHandle | undefined;

@@ -16,6 +16,7 @@
     "@agents/sdk": "workspace:*",
     "@hono/node-server": "^1.13.7",
     "drizzle-orm": "^0.36.4",
+    "gray-matter": "^4.0.3",
     "hono": "^4.6.13"
   },
   "devDependencies": {
