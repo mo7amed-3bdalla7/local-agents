@@ -6,7 +6,11 @@
 import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { query, type PermissionMode } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query,
+  type McpServerConfig,
+  type PermissionMode,
+} from "@anthropic-ai/claude-agent-sdk";
 
 import type {
   AgentConfig,
@@ -119,6 +123,13 @@ export interface ExecuteAgentOptions {
    * so shell-driven CLIs can attribute work back to the session).
    */
   extraEnv?: Record<string, string>;
+  /**
+   * MCP servers to expose to the agent, keyed by server name. Forwarded to the
+   * Claude Agent SDK `query({ mcpServers })` option so the agent sees the
+   * server's tools alongside the SDK built-ins. The worker assembles this map
+   * from the agent's attached, enabled rows in `agent_mcp_servers`.
+   */
+  mcpServers?: Record<string, McpServerConfig>;
 }
 
 /**
@@ -129,7 +140,15 @@ export interface ExecuteAgentOptions {
 export async function executeAgent(
   opts: ExecuteAgentOptions,
 ): Promise<RunResult> {
-  const { config, agentDir, triggerContext, signal, onEvent, extraEnv } = opts;
+  const {
+    config,
+    agentDir,
+    triggerContext,
+    signal,
+    onEvent,
+    extraEnv,
+    mcpServers,
+  } = opts;
   const startedAt = new Date().toISOString();
   const start = Date.now();
 
@@ -153,6 +172,7 @@ export async function executeAgent(
       start,
       signal,
       onEvent,
+      mcpServers,
     );
   } finally {
     for (const key of addedEnvKeys) {
@@ -185,6 +205,7 @@ async function executeAgentCore(
   start: number,
   signal?: AbortSignal,
   onEvent?: ExecuteAgentOptions["onEvent"],
+  mcpServers?: Record<string, McpServerConfig>,
 ): Promise<RunResult> {
   const log = await openRunLog(
     agentDir,
@@ -250,6 +271,9 @@ async function executeAgentCore(
       };
       if (config.execution?.model) {
         queryOptions.model = config.execution.model;
+      }
+      if (mcpServers && Object.keys(mcpServers).length > 0) {
+        queryOptions.mcpServers = mcpServers;
       }
 
       const result = await Promise.race([

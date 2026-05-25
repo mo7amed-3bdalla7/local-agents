@@ -11,8 +11,14 @@
  * touching rows it successfully claimed.
  */
 
-import { eq, sql } from "drizzle-orm";
-import { executeAgent, logger, type RunEvent, type TriggerContext } from "@agents/sdk";
+import { and, eq, sql } from "drizzle-orm";
+import {
+  executeAgent,
+  logger,
+  type McpServerConfig,
+  type RunEvent,
+  type TriggerContext,
+} from "@agents/sdk";
 import { getDb, schema } from "@agents/core";
 import { getAgent } from "./registry.js";
 
@@ -107,6 +113,68 @@ async function recoverOrphanedRuns(): Promise<void> {
   }
 }
 
+/**
+ * Load the agent's attached + enabled MCP servers and translate the DB
+ * config_json into the SDK's `mcpServers` shape (keyed by server name,
+ * with the `type` discriminator on each entry).
+ */
+async function loadAttachedMcpServers(
+  agentId: string,
+): Promise<Record<string, McpServerConfig>> {
+  const rows = await getDb()
+    .select({
+      name: schema.mcpServers.name,
+      transport: schema.mcpServers.transport,
+      configJson: schema.mcpServers.configJson,
+      attachedEnabled: schema.agentMcpServers.enabled,
+      registryEnabled: schema.mcpServers.enabled,
+    })
+    .from(schema.agentMcpServers)
+    .innerJoin(
+      schema.mcpServers,
+      eq(schema.mcpServers.id, schema.agentMcpServers.mcpId),
+    )
+    .where(
+      and(
+        eq(schema.agentMcpServers.agentId, agentId),
+        eq(schema.agentMcpServers.enabled, true),
+        eq(schema.mcpServers.enabled, true),
+      ),
+    );
+
+  const out: Record<string, McpServerConfig> = {};
+  for (const row of rows) {
+    const cfg = row.configJson as Record<string, unknown>;
+    switch (row.transport) {
+      case "stdio":
+        out[row.name] = {
+          type: "stdio",
+          command: String(cfg.command ?? ""),
+          args: Array.isArray(cfg.args) ? (cfg.args as string[]) : undefined,
+          env: (cfg.env as Record<string, string> | undefined) ?? undefined,
+        };
+        break;
+      case "http":
+        out[row.name] = {
+          type: "http",
+          url: String(cfg.url ?? ""),
+          headers:
+            (cfg.headers as Record<string, string> | undefined) ?? undefined,
+        };
+        break;
+      case "sse":
+        out[row.name] = {
+          type: "sse",
+          url: String(cfg.url ?? ""),
+          headers:
+            (cfg.headers as Record<string, string> | undefined) ?? undefined,
+        };
+        break;
+    }
+  }
+  return out;
+}
+
 async function failRun(runId: number, message: string): Promise<void> {
   const db = getDb();
   await db
@@ -194,6 +262,14 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
   const promise = (async () => {
     const startMs = Date.now();
     try {
+      const mcpServers = await loadAttachedMcpServers(run.agentId);
+      if (Object.keys(mcpServers).length > 0) {
+        logger.info("Injecting MCP servers into run", {
+          agentId: run.agentId,
+          servers: Object.keys(mcpServers),
+        });
+      }
+
       const result = await executeAgent({
         config: entry.config,
         agentDir: entry.dir,
@@ -201,6 +277,7 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
         signal: abort.signal,
         onEvent,
         extraEnv: { AGENTS_SESSION_ID: session.id },
+        mcpServers,
       });
 
       const finishedAt = new Date(result.finishedAt);
