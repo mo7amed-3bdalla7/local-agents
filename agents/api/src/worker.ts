@@ -200,6 +200,7 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
         triggerContext: run.triggerContext,
         signal: abort.signal,
         onEvent,
+        extraEnv: { AGENTS_SESSION_ID: session.id },
       });
 
       const finishedAt = new Date(result.finishedAt);

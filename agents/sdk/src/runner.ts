@@ -113,6 +113,12 @@ export interface ExecuteAgentOptions {
    * so keep it fast — slow handlers will stall the SDK message loop.
    */
   onEvent?: (event: RunEvent) => void | Promise<void>;
+  /**
+   * Extra environment variables to inject for the duration of the run.
+   * Inherited by every Bash tool call the agent makes (e.g. AGENTS_SESSION_ID
+   * so shell-driven CLIs can attribute work back to the session).
+   */
+  extraEnv?: Record<string, string>;
 }
 
 /**
@@ -123,11 +129,20 @@ export interface ExecuteAgentOptions {
 export async function executeAgent(
   opts: ExecuteAgentOptions,
 ): Promise<RunResult> {
-  const { config, agentDir, triggerContext, signal, onEvent } = opts;
+  const { config, agentDir, triggerContext, signal, onEvent, extraEnv } = opts;
   const startedAt = new Date().toISOString();
   const start = Date.now();
 
   const addedEnvKeys = await loadAgentEnv(agentDir);
+
+  // Snapshot any extraEnv keys we'll set so we can restore them in finally.
+  const savedExtraEnv: Record<string, string | undefined> = {};
+  if (extraEnv) {
+    for (const [key, value] of Object.entries(extraEnv)) {
+      savedExtraEnv[key] = process.env[key];
+      process.env[key] = value;
+    }
+  }
 
   try {
     return await executeAgentCore(
@@ -142,6 +157,10 @@ export async function executeAgent(
   } finally {
     for (const key of addedEnvKeys) {
       delete process.env[key];
+    }
+    for (const [key, prior] of Object.entries(savedExtraEnv)) {
+      if (prior === undefined) delete process.env[key];
+      else process.env[key] = prior;
     }
   }
 }

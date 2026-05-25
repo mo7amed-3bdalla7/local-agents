@@ -30,8 +30,6 @@ The prompt injects these variables. Use them throughout the workflow:
 | Variable | Example | Description |
 |----------|---------|-------------|
 | `REPO` | `owner/repo-name` | GitHub owner/repo |
-| `REPO_SLUG` | `owner-repo-name` | Repo identifier (slash replaced with dash) |
-| `WORKSPACE` | `$HOME/pr-reviews/owner-repo-name` | Local clone directory |
 | `PR_NUMBER` | `42` | Pull request number |
 | `PR_TITLE` | `Add user auth` | Pull request title |
 | `HEAD_REF` | `feature/auth` | Source branch |
@@ -40,6 +38,12 @@ The prompt injects these variables. Use them throughout the workflow:
 | `REVIEW_FORMAT` | `comment` or `review` | How to post the review |
 | `LABEL_ISSUES` | `reviewed-by-agent` or `(none)` | Label to add when issues found |
 | `LABEL_PASSED` | `review-passed` or `(none)` | Label to add when no issues found |
+
+The worker also injects one environment variable, automatically:
+
+| Env var | Description |
+|---------|-------------|
+| `AGENTS_SESSION_ID` | The platform session this run belongs to. Used implicitly by `pnpm pr-activity log` to attribute each comment/review back to this session. Do not set manually. |
 
 ## Workflow
 
@@ -77,28 +81,25 @@ If any review body starts with "## PR Review", skip this run.
 
 ### Step 4: Set up workspace
 
-The workspace is a full clone managed in `$HOME/pr-reviews/`.
+The platform's **repo-manager** handles the clone and worktree — you do NOT clone manually. Each branch gets its own `git worktree` under `$HOME/.agents/worktrees/<owner>__<repo>/<branch>/`, reusable across runs.
 
 ```bash
-WORKSPACE="$HOME/pr-reviews/{REPO_SLUG}"
+# Register the repo (idempotent — clones into the managed worktree root if missing).
+# Stdout is JSON; capture the main clone path for the PR-ref fetch.
+REPO_JSON=$(pnpm -s repo register --github "{REPO}")
+CLONE=$(echo "$REPO_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin)['localPath'])")
 
-# Clone if not already present
-if [ ! -d "$WORKSPACE" ]; then
-  mkdir -p "$HOME/pr-reviews"
-  gh repo clone {REPO} "$WORKSPACE"
-fi
+# Fetch the PR ref as a local branch in the main clone so the worktree
+# can be materialized from it.
+git -C "$CLONE" fetch origin "pull/{PR_NUMBER}/head:pr-{PR_NUMBER}"
+
+# Materialize (or reuse) a worktree on that branch. Stdout = the worktree path.
+WORKSPACE=$(pnpm -s repo ensure-worktree --github "{REPO}" --branch "pr-{PR_NUMBER}")
 
 cd "$WORKSPACE"
-
-# Detach and clean up any leftover branches
-git checkout --detach HEAD 2>/dev/null
-
-# Fetch latest and checkout the PR branch
-git fetch origin pull/{PR_NUMBER}/head:pr-{PR_NUMBER}
-git checkout pr-{PR_NUMBER}
 ```
 
-All subsequent file reads happen inside `WORKSPACE`.
+All subsequent file reads happen inside `$WORKSPACE`.
 
 ### Step 5: Get the diff
 
@@ -145,7 +146,7 @@ For each issue found, note:
 
 ### Step 8: Post the review
 
-The posting method depends on the REVIEW_FORMAT variable.
+The posting method depends on the REVIEW_FORMAT variable. After **every** post, log it to the platform's `pr_activity` table so the dashboard shows what you did. `gh pr comment` and `gh pr review` print the resulting URL on stdout — capture it.
 
 #### If REVIEW_FORMAT is `comment`
 
@@ -154,7 +155,7 @@ Post a PR comment (used when formal reviews aren't possible, e.g., reviewing you
 **If issues found:**
 
 ```bash
-gh pr comment {PR_NUMBER} --repo {REPO} --body "$(cat <<'EOF'
+BODY="$(cat <<'EOF'
 ## PR Review
 
 **Verdict: CHANGES REQUESTED**
@@ -171,12 +172,21 @@ gh pr comment {PR_NUMBER} --repo {REPO} --body "$(cat <<'EOF'
 
 EOF
 )"
+
+URL=$(gh pr comment {PR_NUMBER} --repo "{REPO}" --body "$BODY")
+pnpm -s pr-activity log \
+  --github "{REPO}" \
+  --pr {PR_NUMBER} \
+  --kind issue_comment \
+  --status posted \
+  --github-url "$URL" \
+  --payload "$(python3 -c 'import json,sys;print(json.dumps({"verdict":"changes_requested","body_excerpt":sys.argv[1][:200]}))' "$BODY")"
 ```
 
 **If the PR looks good:**
 
 ```bash
-gh pr comment {PR_NUMBER} --repo {REPO} --body "$(cat <<'EOF'
+BODY="$(cat <<'EOF'
 ## PR Review
 
 **Verdict: APPROVED**
@@ -185,6 +195,15 @@ gh pr comment {PR_NUMBER} --repo {REPO} --body "$(cat <<'EOF'
 
 EOF
 )"
+
+URL=$(gh pr comment {PR_NUMBER} --repo "{REPO}" --body "$BODY")
+pnpm -s pr-activity log \
+  --github "{REPO}" \
+  --pr {PR_NUMBER} \
+  --kind issue_comment \
+  --status posted \
+  --github-url "$URL" \
+  --payload '{"verdict":"approved"}'
 ```
 
 #### If REVIEW_FORMAT is `review`
@@ -194,7 +213,7 @@ Post a formal GitHub review with approve/request-changes.
 **If issues found:**
 
 ```bash
-gh pr review {PR_NUMBER} --repo {REPO} --request-changes --body "$(cat <<'EOF'
+BODY="$(cat <<'EOF'
 ## PR Review
 
 <overall summary — 2-3 sentences about what the PR does and your assessment>
@@ -209,18 +228,36 @@ gh pr review {PR_NUMBER} --repo {REPO} --request-changes --body "$(cat <<'EOF'
 
 EOF
 )"
+
+URL=$(gh pr review {PR_NUMBER} --repo "{REPO}" --request-changes --body "$BODY")
+pnpm -s pr-activity log \
+  --github "{REPO}" \
+  --pr {PR_NUMBER} \
+  --kind review_submitted \
+  --status posted \
+  --github-url "$URL" \
+  --payload '{"verdict":"changes_requested"}'
 ```
 
 **If the PR looks good:**
 
 ```bash
-gh pr review {PR_NUMBER} --repo {REPO} --approve --body "$(cat <<'EOF'
+BODY="$(cat <<'EOF'
 ## PR Review
 
 <summary of what was reviewed and why it looks good>
 
 EOF
 )"
+
+URL=$(gh pr review {PR_NUMBER} --repo "{REPO}" --approve --body "$BODY")
+pnpm -s pr-activity log \
+  --github "{REPO}" \
+  --pr {PR_NUMBER} \
+  --kind review_submitted \
+  --status posted \
+  --github-url "$URL" \
+  --payload '{"verdict":"approved"}'
 ```
 
 ### Step 9: Label the PR
@@ -241,15 +278,9 @@ gh pr edit {PR_NUMBER} --repo {REPO} --add-label "{LABEL_PASSED}"
 
 Skip labeling entirely if the relevant label variable is `(none)`.
 
-### Step 10: Clean up workspace
+### Step 10: Clean up
 
-```bash
-cd "$WORKSPACE"
-git checkout --detach HEAD 2>/dev/null
-git branch -D pr-{PR_NUMBER} 2>/dev/null
-```
-
-Always detach HEAD so the workspace is clean for the next run.
+No cleanup needed — the worktree is reusable and the repo-manager owns its lifecycle. The next run on the same PR will reuse the same `pr-{PR_NUMBER}` worktree; runs on different branches get their own.
 
 ### Step 11: Report
 
@@ -263,8 +294,8 @@ Print a summary:
 
 ## Tools
 
-- **Bash** — git operations, `gh` CLI for PR interaction
-- **Read** — read source files in the workspace for full context
+- **Bash** — `gh` CLI for PR interaction, `pnpm repo` for worktree management, `pnpm pr-activity log` for audit trail, plus `git`/`python3` for the small amount of glue.
+- **Read** — read source files in the worktree for full context
 - **Glob** — find related files when understanding context
 - **Grep** — search for patterns across the codebase
 
