@@ -23,7 +23,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "check-types": "tsc --noEmit",
-    "test": "node --test --import tsx 'src/**/*.test.ts'",
+    "test": "node --import tsx --test --test-reporter=spec 'src/**/*.test.ts'",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node dist/db/migrate.js",
     "db:push": "drizzle-kit push",
@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.36.4",
+    "keytar": "^7.9.0",
     "postgres": "^3.4.5"
   },
   "devDependencies": {
