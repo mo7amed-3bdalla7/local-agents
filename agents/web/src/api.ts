@@ -22,6 +22,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         : "") || `${res.status} ${res.statusText}`;
     throw new ApiError(res.status, message, body);
   }
+  if (res.status === 204) {
+    return undefined as T;
+  }
   return (await res.json()) as T;
 }
 
@@ -44,9 +47,39 @@ export const api = {
         agent: Agent;
         recentSessions: SessionSummary[];
         recentRuns: RunSummary[];
+        skills: SkillAttachment[];
+        connectors: ConnectorAttachment[];
+        mcpServers: McpAttachment[];
       }>(`/agents/${id}`),
     run: (id: string) =>
       request<unknown>(`/agents/${id}/run`, { method: "POST" }),
+    attachSkill: (id: string, skillName: string, enabled = true) =>
+      request<unknown>(`/agents/${id}/skills/${encodeURIComponent(skillName)}`, {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      }),
+    detachSkill: (id: string, skillName: string) =>
+      request<unknown>(`/agents/${id}/skills/${encodeURIComponent(skillName)}`, {
+        method: "DELETE",
+      }),
+    attachConnector: (id: string, connectorId: string, enabled = true) =>
+      request<unknown>(`/agents/${id}/connectors/${connectorId}`, {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      }),
+    detachConnector: (id: string, connectorId: string) =>
+      request<unknown>(`/agents/${id}/connectors/${connectorId}`, {
+        method: "DELETE",
+      }),
+    attachMcp: (id: string, mcpServerId: string, enabled = true) =>
+      request<unknown>(`/agents/${id}/mcp-servers/${mcpServerId}`, {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      }),
+    detachMcp: (id: string, mcpServerId: string) =>
+      request<unknown>(`/agents/${id}/mcp-servers/${mcpServerId}`, {
+        method: "DELETE",
+      }),
   },
   sessions: {
     list: () => request<{ sessions: SessionSummary[] }>("/sessions"),
@@ -196,4 +229,19 @@ export interface Repo {
   secretRef: string | null;
   autoModes: Record<string, unknown>;
   createdAt: string;
+}
+
+export interface SkillAttachment {
+  skill: Skill;
+  enabled: boolean;
+}
+
+export interface ConnectorAttachment {
+  connector: Connector;
+  enabled: boolean;
+}
+
+export interface McpAttachment {
+  mcpServer: McpServer;
+  enabled: boolean;
 }
