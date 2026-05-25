@@ -33,3 +33,17 @@ export {
   type Worktree,
   type PrActivity,
 } from "./repos/manager.js";
+
+export {
+  addConnector,
+  getActiveConnector,
+  getConnector,
+  listConnectors,
+  readSecret,
+  removeConnector,
+  testConnector,
+  type AddConnectorArgs,
+  type ConnectorRow,
+  type JiraConfig,
+  type TestResult,
+} from "./connectors/manager.js";

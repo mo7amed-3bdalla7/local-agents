@@ -32,7 +32,11 @@
     "prerepo": "turbo run build --filter=@agents/core",
     "repo": "node agents/core/dist/cli/repo.js",
     "prepr-activity": "turbo run build --filter=@agents/core",
-    "pr-activity": "node agents/core/dist/cli/pr-activity.js"
+    "pr-activity": "node agents/core/dist/cli/pr-activity.js",
+    "preconnector": "turbo run build --filter=@agents/core",
+    "connector": "node agents/core/dist/cli/connector.js",
+    "prejira": "turbo run build --filter=@agents/core",
+    "jira": "node agents/core/dist/cli/jira.js"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
