@@ -1,21 +1,31 @@
 import { Link, useParams } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Play } from "lucide-react";
 import { api, ApiError } from "../api.ts";
 import { PageHeader } from "../components/PageHeader.tsx";
 import { StatusBadge } from "../components/StatusBadge.tsx";
 import { ErrorBox } from "./AgentsList.tsx";
 
+const IN_FLIGHT_STATUSES = new Set(["pending", "active"]);
+
 export function AgentDetail() {
   const { id = "" } = useParams();
+  const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["agent", id],
     queryFn: () => api.agents.get(id),
     enabled: Boolean(id),
+    refetchInterval: (query) =>
+      query.state.data?.recentRuns.some((r) => IN_FLIGHT_STATUSES.has(r.status))
+        ? 2000
+        : false,
   });
 
   const runMutation = useMutation({
     mutationFn: () => api.agents.run(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agent", id] });
+    },
   });
 
   if (isLoading) {
