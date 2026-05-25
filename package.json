@@ -26,6 +26,8 @@
     "compose:logs": "docker compose logs -f",
     "api": "pnpm --filter=@agents/api dev",
     "api:build": "turbo run build --filter=@agents/api",
+    "web": "pnpm --filter=@agents/web dev",
+    "web:build": "turbo run build --filter=@agents/web",
     "db:migrate": "pnpm --filter=@agents/core db:migrate"
   },
   "devDependencies": {
