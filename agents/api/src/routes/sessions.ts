@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { asc, desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@agents/core";
+import { isUuid } from "../util.js";
 
 export const sessionsRouter = new Hono();
 
@@ -31,6 +32,9 @@ sessionsRouter.get("/", async (c) => {
 sessionsRouter.get("/:id", async (c) => {
   const db = getDb();
   const id = c.req.param("id");
+  if (!isUuid(id)) {
+    return c.json({ error: "invalid_id", message: "id must be a UUID" }, 400);
+  }
   const [session] = await db
     .select()
     .from(schema.sessions)
@@ -45,10 +49,22 @@ sessionsRouter.get("/:id", async (c) => {
 sessionsRouter.get("/:id/events", async (c) => {
   const db = getDb();
   const id = c.req.param("id");
+  if (!isUuid(id)) {
+    return c.json({ error: "invalid_id", message: "id must be a UUID" }, 400);
+  }
   const limitParam = Number(c.req.query("limit") ?? "500");
   const limit = Number.isFinite(limitParam)
     ? Math.min(Math.max(limitParam, 1), 5000)
     : 500;
+
+  const [session] = await db
+    .select({ id: schema.sessions.id })
+    .from(schema.sessions)
+    .where(eq(schema.sessions.id, id))
+    .limit(1);
+  if (!session) {
+    return c.json({ error: "session not found" }, 404);
+  }
 
   const events = await db
     .select()

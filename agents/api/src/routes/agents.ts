@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@agents/core";
+import { isUuid } from "../util.js";
 
 export const agentsRouter = new Hono();
 
@@ -23,6 +24,9 @@ agentsRouter.get("/", async (c) => {
 agentsRouter.get("/:id", async (c) => {
   const db = getDb();
   const id = c.req.param("id");
+  if (!isUuid(id)) {
+    return c.json({ error: "invalid_id", message: "id must be a UUID" }, 400);
+  }
   const [agent] = await db
     .select()
     .from(schema.agents)
@@ -62,8 +66,12 @@ agentsRouter.get("/:id", async (c) => {
   return c.json({ agent, recentSessions, recentRuns });
 });
 
-agentsRouter.post("/:id/run", (c) =>
-  c.json(
+agentsRouter.post("/:id/run", (c) => {
+  const id = c.req.param("id");
+  if (!isUuid(id)) {
+    return c.json({ error: "invalid_id", message: "id must be a UUID" }, 400);
+  }
+  return c.json(
     {
       error: "not_implemented",
       message:
@@ -71,5 +79,5 @@ agentsRouter.post("/:id/run", (c) =>
         "Until that lands, trigger agents via `pnpm agent-run -- <name>` from the CLI.",
     },
     501,
-  ),
-);
+  );
+});
