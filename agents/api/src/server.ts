@@ -1,12 +1,18 @@
 /**
- * @agents/api — Hono REST server.
+ * @agents/api — single-server entry point.
  *
- * Runs on port 3848 (configurable via API_PORT). Serves read-only views over
- * the platform state for the web UI. Mutating endpoints land alongside their
- * owning registries in later commits.
+ * One HTTP server, one port. Vite owns the listener and serves the React
+ * dashboard (with HMR over the same socket); a Vite plugin mounts the Hono
+ * REST app at `/api/*` so the dashboard's typed client just works without a
+ * proxy. Everything outside /api falls through to Vite's middleware chain
+ * (transforms, /@vite/client, static, SPA fallback).
+ *
+ * Port defaults to 3848 (override with API_PORT). All API routes are under
+ * /api — see agents/api/src/routes/.
  */
 
-import { serve } from "@hono/node-server";
+import { resolve } from "node:path";
+import { getRequestListener } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger as honoLogger } from "hono/logger";
@@ -52,16 +58,17 @@ export function createApp(): Hono {
     }),
   );
 
-  app.get("/healthz", (c) => c.json({ status: "ok" }));
-
-  app.route("/agents", agentsRouter);
-  app.route("/sessions", sessionsRouter);
-  app.route("/runs", runsRouter);
-  app.route("/connectors", connectorsRouter);
-  app.route("/skills", skillsRouter);
-  app.route("/mcp-servers", mcpRouter);
-  app.route("/repos", reposRouter);
-  app.route("/pr-activity", prActivityRouter);
+  const api = new Hono();
+  api.get("/healthz", (c) => c.json({ status: "ok" }));
+  api.route("/agents", agentsRouter);
+  api.route("/sessions", sessionsRouter);
+  api.route("/runs", runsRouter);
+  api.route("/connectors", connectorsRouter);
+  api.route("/skills", skillsRouter);
+  api.route("/mcp-servers", mcpRouter);
+  api.route("/repos", reposRouter);
+  api.route("/pr-activity", prActivityRouter);
+  app.route("/api", api);
 
   app.onError((err, c) => {
     logger.error("api error", { error: err.message, stack: err.stack });
@@ -90,16 +97,46 @@ async function main() {
   }
 
   const app = createApp();
-  const server = serve({ fetch: app.fetch, port: PORT });
-  logger.info("api listening", { port: PORT });
+  const apiHandler = getRequestListener(app.fetch);
+
+  const { createServer: createViteServer } = await import("vite");
+  const webDir = resolve(workspaceRoot(), "agents", "web");
+  const vite = await createViteServer({
+    root: webDir,
+    appType: "spa",
+    server: { port: PORT, strictPort: true },
+    // Quiet Vite's own "ready in Xms" line — we log our own.
+    logLevel: "warn",
+    plugins: [
+      {
+        name: "agents-api",
+        configureServer(server) {
+          // Pre-hook: runs BEFORE Vite's transform / static / SPA middlewares.
+          // Anything under /api/* is handed to Hono; everything else falls
+          // through to Vite via next().
+          server.middlewares.use((req, res, next) => {
+            const url = req.url ?? "/";
+            if (url === "/api" || url.startsWith("/api/")) {
+              apiHandler(req, res);
+            } else {
+              next();
+            }
+          });
+        },
+      },
+    ],
+  });
+
+  await vite.listen(PORT);
+  logger.info("listening", { port: PORT, url: `http://localhost:${PORT}` });
 
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;
     shuttingDown = true;
-    logger.info("api shutting down");
-    server.close();
+    logger.info("shutting down");
     if (worker) await worker.stop();
+    await vite.close().catch(() => undefined);
     await closeDb();
     process.exit(0);
   };

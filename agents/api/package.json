@@ -6,7 +6,7 @@
   "main": "./dist/server.js",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch --ignore '../web/**' --ignore '../**/.vite-temp/**' --ignore '../**/dist/**' src/server.ts",
     "start": "node dist/server.js",
     "check-types": "tsc --noEmit"
   },
@@ -22,6 +22,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsx": "^4.19.2",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "vite": "^6.0.7"
   }
 }

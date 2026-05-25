@@ -45,12 +45,11 @@ pnpm build
 # 5. Run database migrations (creates the 14 platform tables)
 pnpm db:migrate
 
-# 6. Start the API + web dashboard (in two terminals)
+# 6. Start the platform (one process serves API + dashboard)
 pnpm api      # → http://localhost:3848
-pnpm web      # → http://localhost:5173
 
 # 7. Open the dashboard
-open http://localhost:5173
+open http://localhost:3848
 ```
 
 Click into the `pr-reviewer` agent and hit **Run now** to enqueue a run. The session-detail page polls live as the SDK streams events into the timeline.
@@ -80,9 +79,11 @@ pnpm compose:down               # stop the stack
 pnpm compose:logs               # follow container logs
 pnpm db:migrate                 # apply Drizzle migrations
 
-# API + UI
-pnpm api                        # REST server, port 3848
-pnpm web                        # React dashboard, port 5173 (proxies /api/* → 3848)
+# API + UI (one server)
+pnpm api                        # API on /api/* + React dashboard at /, port 3848
+pnpm web                        # standalone web dev server on :5173 (rarely needed —
+                                #   proxies /api/* back to :3848. Use when you want
+                                #   HMR without booting the worker)
 pnpm api:build                  # build just the api package
 pnpm web:build                  # build just the web package
 
@@ -106,7 +107,7 @@ pnpm scheduler:logs             # tail pm2 logs
 
 ## Web UI
 
-`pnpm web` brings up a dashboard at `http://localhost:5173` with:
+`pnpm api` boots the dashboard at `http://localhost:3848` alongside the REST API. The dashboard exposes:
 
 - **Agents** — list of discovered agents, each with system prompt, config, recent runs, and a **Run now** button
 - **Sessions** — every agent execution with status (active → completed/failed/timeout/aborted) and a live event timeline
