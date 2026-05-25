@@ -19,3 +19,17 @@ export {
   UnknownBackendError,
   type SecretsAdapter,
 } from "./secrets/index.js";
+
+export {
+  ensureRepo,
+  ensureWorktree,
+  logPrActivity,
+  type EnsureRepoArgs,
+  type EnsureWorktreeArgs,
+  type LogPrActivityArgs,
+  type PrActivityKind,
+  type PrActivityStatus,
+  type Repo,
+  type Worktree,
+  type PrActivity,
+} from "./repos/manager.js";

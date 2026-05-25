@@ -28,7 +28,11 @@
     "api:build": "turbo run build --filter=@agents/api",
     "web": "pnpm --filter=@agents/web dev",
     "web:build": "turbo run build --filter=@agents/web",
-    "db:migrate": "pnpm --filter=@agents/core db:migrate"
+    "db:migrate": "pnpm --filter=@agents/core db:migrate",
+    "prerepo": "turbo run build --filter=@agents/core",
+    "repo": "node agents/core/dist/cli/repo.js",
+    "prepr-activity": "turbo run build --filter=@agents/core",
+    "pr-activity": "node agents/core/dist/cli/pr-activity.js"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
