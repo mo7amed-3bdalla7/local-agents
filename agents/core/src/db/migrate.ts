@@ -13,12 +13,31 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 // dist/db/migrate.js → ../../drizzle
 const MIGRATIONS_FOLDER = join(here, "..", "..", "drizzle");
+
+/**
+ * Walk up from cwd looking for the pnpm-workspace.yaml marker so the .env at
+ * the repo root is loaded even when `pnpm --filter=@agents/core db:migrate`
+ * runs the script with cwd inside the sub-package.
+ */
+function findWorkspaceEnv(): string | undefined {
+  let dir = process.cwd();
+  while (true) {
+    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) {
+      const env = resolve(dir, ".env");
+      return existsSync(env) ? env : undefined;
+    }
+    const parent = resolve(dir, "..");
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
 
 export async function runMigrations(databaseUrl?: string): Promise<void> {
   const url = databaseUrl ?? process.env.DATABASE_URL;
@@ -45,10 +64,13 @@ const isMain = (() => {
 })();
 
 if (isMain) {
-  try {
-    process.loadEnvFile();
-  } catch {
-    // .env is optional
+  const envPath = findWorkspaceEnv();
+  if (envPath) {
+    try {
+      process.loadEnvFile(envPath);
+    } catch {
+      // .env is optional
+    }
   }
   runMigrations()
     .then(() => {

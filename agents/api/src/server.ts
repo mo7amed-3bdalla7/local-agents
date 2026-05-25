@@ -27,8 +27,11 @@ import { syncSkills } from "./skills/sync.js";
 import { workspaceRoot } from "./paths.js";
 import { startWorker, type WorkerHandle } from "./worker.js";
 
+// Load the repo-root .env (not the sub-package one) so `pnpm api` from the
+// workspace root or `pnpm --filter=@agents/api dev` from anywhere both work.
 try {
-  process.loadEnvFile();
+  const envPath = `${workspaceRoot()}/.env`;
+  process.loadEnvFile(envPath);
 } catch {
   // .env is optional
 }
