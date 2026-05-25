@@ -30,11 +30,13 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "drizzle-orm": "^0.36.4",
     "keytar": "^7.9.0",
     "postgres": "^3.4.5"
   },
   "devDependencies": {
+    "@modelcontextprotocol/server-everything": "^2026.1.26",
     "@types/node": "^22.0.0",
     "drizzle-kit": "^0.30.0",
     "tsx": "^4.19.2",

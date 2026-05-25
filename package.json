@@ -36,7 +36,9 @@
     "preconnector": "turbo run build --filter=@agents/core",
     "connector": "node agents/core/dist/cli/connector.js",
     "prejira": "turbo run build --filter=@agents/core",
-    "jira": "node agents/core/dist/cli/jira.js"
+    "jira": "node agents/core/dist/cli/jira.js",
+    "premcp": "turbo run build --filter=@agents/core",
+    "mcp": "node agents/core/dist/cli/mcp.js"
   },
   "devDependencies": {
     "prettier": "^3.7.4",

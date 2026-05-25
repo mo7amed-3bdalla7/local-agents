@@ -47,3 +47,20 @@ export {
   type JiraConfig,
   type TestResult,
 } from "./connectors/manager.js";
+
+export {
+  addMcpServer,
+  getMcpServerByName,
+  listMcpServers,
+  removeMcpServer,
+  testMcpServer,
+  type AddMcpServerArgs,
+  type HttpConfig,
+  type McpConfig,
+  type McpServerRow,
+  type McpTestResult,
+  type McpTool,
+  type McpTransport,
+  type SseConfig,
+  type StdioConfig,
+} from "./mcp/manager.js";
