@@ -1,0 +1,26 @@
+{
+  "name": "@agents/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agents/core": "workspace:*",
+    "@agents/scheduler": "workspace:*",
+    "@agents/sdk": "workspace:*",
+    "@hono/node-server": "^1.13.7",
+    "drizzle-orm": "^0.36.4",
+    "hono": "^4.6.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "5.9.2"
+  }
+}

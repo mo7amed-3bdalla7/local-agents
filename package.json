@@ -23,7 +23,10 @@
     "scheduler:logs": "pm2 logs agents-scheduler",
     "compose:up": "docker compose up -d",
     "compose:down": "docker compose down",
-    "compose:logs": "docker compose logs -f"
+    "compose:logs": "docker compose logs -f",
+    "api": "pnpm --filter=@agents/api dev",
+    "api:build": "turbo run build --filter=@agents/api",
+    "db:migrate": "pnpm --filter=@agents/core db:migrate"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
