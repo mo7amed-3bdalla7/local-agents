@@ -12,11 +12,15 @@ export function SessionDetail() {
     queryKey: ["session", id],
     queryFn: () => api.sessions.get(id),
     enabled: Boolean(id),
+    refetchInterval: (query) =>
+      query.state.data?.session.status === "active" ? 2000 : false,
   });
+  const isActive = sessionQuery.data?.session.status === "active";
   const eventsQuery = useQuery({
     queryKey: ["session-events", id],
     queryFn: () => api.sessions.events(id),
     enabled: Boolean(id),
+    refetchInterval: isActive ? 2000 : false,
   });
 
   if (sessionQuery.error) return <ErrorBox error={sessionQuery.error} />;
