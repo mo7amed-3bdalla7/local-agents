@@ -75,6 +75,9 @@ export const api = {
   prActivity: {
     list: () => request<{ prActivity: PrActivity[] }>("/pr-activity"),
   },
+  repos: {
+    list: () => request<{ repos: Repo[] }>("/repos"),
+  },
 };
 
 // --- Types -----------------------------------------------------------------
@@ -182,4 +185,15 @@ export interface PrActivity {
   githubUrl: string | null;
   createdAt: string;
   postedAt: string | null;
+}
+
+export interface Repo {
+  id: string;
+  githubFullName: string;
+  localPath: string;
+  defaultBranch: string;
+  testCommand: string | null;
+  secretRef: string | null;
+  autoModes: Record<string, unknown>;
+  createdAt: string;
 }

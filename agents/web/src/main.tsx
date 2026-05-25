@@ -11,6 +11,7 @@ import { ConnectorsList } from "./pages/ConnectorsList.tsx";
 import { SkillsList } from "./pages/SkillsList.tsx";
 import { McpServersList } from "./pages/McpServersList.tsx";
 import { PrActivityList } from "./pages/PrActivityList.tsx";
+import { ReposList } from "./pages/ReposList.tsx";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -36,6 +37,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="connectors" element={<ConnectorsList />} />
             <Route path="skills" element={<SkillsList />} />
             <Route path="mcp-servers" element={<McpServersList />} />
+            <Route path="repos" element={<ReposList />} />
             <Route path="pr-activity" element={<PrActivityList />} />
           </Route>
         </Routes>

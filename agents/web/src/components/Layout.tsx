@@ -3,6 +3,7 @@ import {
   Activity,
   Boxes,
   Bot,
+  FolderGit2,
   GitPullRequest,
   PlugZap,
   Sparkles,
@@ -22,6 +23,7 @@ const NAV: NavItem[] = [
   { to: "/connectors", label: "Connectors", icon: PlugZap, end: false },
   { to: "/skills", label: "Skills", icon: Sparkles, end: false },
   { to: "/mcp-servers", label: "MCP servers", icon: Wrench, end: false },
+  { to: "/repos", label: "Repos", icon: FolderGit2, end: false },
   { to: "/pr-activity", label: "PR activity", icon: GitPullRequest, end: false },
 ];
 
