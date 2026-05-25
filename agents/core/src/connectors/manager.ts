@@ -72,11 +72,40 @@ export async function getConnector(id: string): Promise<ConnectorRow | undefined
 /**
  * Find the first enabled connector of a given type. Used by the per-type CLIs
  * (e.g. `pnpm jira ...`) so the caller doesn't have to remember UUIDs.
+ *
+ * Agent-aware: when `AGENTS_AGENT_ID` is set in the environment (injected by
+ * the worker for every agent run), only connectors that are both attached +
+ * enabled for that agent are visible. Outside an agent context (manual shell,
+ * CI script) the global first-enabled fallback applies.
  */
 export async function getActiveConnector(
   connectorType: string,
 ): Promise<ConnectorRow | undefined> {
-  const [row] = await getDb()
+  const db = getDb();
+  const agentId = process.env.AGENTS_AGENT_ID;
+
+  if (agentId) {
+    const [row] = await db
+      .select({ c: schema.connectors })
+      .from(schema.agentConnectors)
+      .innerJoin(
+        schema.connectors,
+        eq(schema.connectors.id, schema.agentConnectors.connectorId),
+      )
+      .where(
+        and(
+          eq(schema.agentConnectors.agentId, agentId),
+          eq(schema.agentConnectors.enabled, true),
+          eq(schema.connectors.connectorType, connectorType),
+          eq(schema.connectors.enabled, true),
+        ),
+      )
+      .orderBy(schema.connectors.createdAt)
+      .limit(1);
+    return row?.c;
+  }
+
+  const [row] = await db
     .select()
     .from(schema.connectors)
     .where(
