@@ -344,7 +344,34 @@ export default defineAgent({
 2. **Webhook** — `{ type: "webhook", path?, secret?, passBody? }` → `POST /trigger/{path}`
 3. **File watch** — `{ type: "file", patterns: ["**/*.ts"], debounceMs?, ignore? }`
 4. **Inter-agent** — `{ type: "agent", source: "agent-name", onSuccess?, onFailure?, passResult? }`
-5. **Manual** — always implicitly available via CLI
+5. **GitHub** — `{ type: "github", repo: "owner/name", events: GitHubEvent[], pollIntervalMs? }` — poller invokes `gh` CLI, diffs PR/issue state across cycles, dispatches on transitions. Events: `pr:opened|closed|merged|reopened|synchronize|reviewed|labeled|ready_for_review`, `issue:opened|closed|reopened|labeled|assigned|commented`. State persists to `~/.agents-scheduler/github-state.json` (override via `GITHUB_STATE_DIR`). Requires `gh` authenticated locally. First poll per repo (initial and post-restart) snapshots silently — no events fired — to avoid replaying history.
+6. **Manual** — always implicitly available via CLI
+
+### Infrastructure Internals
+
+When modifying the shared runtime (not agents), here's the file layout — saves a spelunk:
+
+**`agents/sdk/src/`** — five files, the entire shared runtime:
+- `config.ts` — type definitions (`AgentConfig`, `Trigger`, `TriggerContext`, `RunResult`, etc.)
+- `define.ts` — `defineAgent()` helper (type-checks config at definition site)
+- `runner.ts` — `executeAgent()`: loads AGENTS.md, resolves prompt, calls Claude Agent SDK `query()`, handles timeout/retries/abort, writes per-run log
+- `logger.ts` — structured logger used by SDK + scheduler
+- `index.ts` — public exports
+
+**`agents/scheduler/src/`** — eleven files, the orchestration engine:
+- `cli.ts` — `start | list | run` entry point
+- `discovery.ts` — scans `agents/*/dist/agent.config.js` to find agents
+- `execution-manager.ts` — concurrency/queue control (per-agent `maxConcurrency`, `maxQueueSize`)
+- `cron.ts` — `node-cron` registration
+- `webhook.ts` — Express-style webhook server (port 3847, `SCHEDULER_PORT`)
+- `watcher.ts` — file watcher (chokidar-style globs, debounce)
+- `github-poller.ts` — `gh` CLI poller with state diffing
+- `pipeline.ts` — inter-agent edges, cycle detection at startup
+- `notifier.ts` — completion notifications (used for inter-agent fan-out)
+- `db.ts` — SQLite state (`better-sqlite3`) for run history
+- `index.ts` — module exports
+
+Agents only ever import from `@agents/sdk`. Never import from `@agents/scheduler` in an agent — the scheduler imports agents, not the other way around.
 
 ### Scheduler Commands
 
