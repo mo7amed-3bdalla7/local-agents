@@ -7,7 +7,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@agents/sdk": "*"
+    "@agents/sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

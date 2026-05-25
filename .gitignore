@@ -36,6 +36,9 @@ yarn-error.log*
 # Agent run logs
 logs/
 
+# Docker Compose volume mounts (postgres, redis)
+data/
+
 # Agent downloads
 downloads/
 

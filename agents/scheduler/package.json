@@ -21,7 +21,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@agents/sdk": "*",
+    "@agents/sdk": "workspace:*",
     "better-sqlite3": "^11.0.0",
     "node-cron": "^3.0.3"
   },
