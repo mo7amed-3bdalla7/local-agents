@@ -8,7 +8,13 @@ import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { query, type PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 
-import type { AgentConfig, RunResult, RunStatus, TriggerContext } from "./config.js";
+import type {
+  AgentConfig,
+  RunEvent,
+  RunResult,
+  RunStatus,
+  TriggerContext,
+} from "./config.js";
 import { logger } from "./logger.js";
 
 /**
@@ -101,6 +107,12 @@ export interface ExecuteAgentOptions {
   triggerContext: TriggerContext;
   /** AbortSignal for external cancellation. */
   signal?: AbortSignal;
+  /**
+   * Optional callback fired for each event emitted during the run. Used by the
+   * API worker to persist messages/errors into `session_events`. Awaited inline,
+   * so keep it fast — slow handlers will stall the SDK message loop.
+   */
+  onEvent?: (event: RunEvent) => void | Promise<void>;
 }
 
 /**
@@ -111,18 +123,38 @@ export interface ExecuteAgentOptions {
 export async function executeAgent(
   opts: ExecuteAgentOptions,
 ): Promise<RunResult> {
-  const { config, agentDir, triggerContext, signal } = opts;
+  const { config, agentDir, triggerContext, signal, onEvent } = opts;
   const startedAt = new Date().toISOString();
   const start = Date.now();
 
   const addedEnvKeys = await loadAgentEnv(agentDir);
 
   try {
-    return await executeAgentCore(config, agentDir, triggerContext, startedAt, start, signal);
+    return await executeAgentCore(
+      config,
+      agentDir,
+      triggerContext,
+      startedAt,
+      start,
+      signal,
+      onEvent,
+    );
   } finally {
     for (const key of addedEnvKeys) {
       delete process.env[key];
     }
+  }
+}
+
+async function emitEvent(
+  onEvent: ExecuteAgentOptions["onEvent"],
+  event: RunEvent,
+): Promise<void> {
+  if (!onEvent) return;
+  try {
+    await onEvent(event);
+  } catch (err) {
+    logger.warn("onEvent handler threw", { error: String(err) });
   }
 }
 
@@ -133,6 +165,7 @@ async function executeAgentCore(
   startedAt: string,
   start: number,
   signal?: AbortSignal,
+  onEvent?: ExecuteAgentOptions["onEvent"],
 ): Promise<RunResult> {
   const log = await openRunLog(
     agentDir,
@@ -211,6 +244,12 @@ async function executeAgentCore(
             logLine(log, "--- message ---");
             log.write(formatMessage(message) + "\n");
 
+            await emitEvent(onEvent, {
+              kind: "message",
+              payload: message,
+              ts: new Date().toISOString(),
+            });
+
             if (typeof message === "string") {
               output += message;
             } else if (message && typeof message === "object" && "content" in message) {
@@ -253,6 +292,11 @@ async function executeAgentCore(
     } catch (err) {
       lastError = err;
       logLine(log, `Error: ${String(err)}`);
+      await emitEvent(onEvent, {
+        kind: "error",
+        payload: { message: err instanceof Error ? err.message : String(err), attempt },
+        ts: new Date().toISOString(),
+      });
       if (attempt < retries) {
         logger.warn("Agent execution failed, retrying", {
           agent: config.name,

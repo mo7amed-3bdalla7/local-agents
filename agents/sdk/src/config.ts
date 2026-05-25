@@ -136,6 +136,29 @@ export interface RunResult {
 }
 
 // ---------------------------------------------------------------------------
+// Run events — streamed from executeAgent for live persistence
+// ---------------------------------------------------------------------------
+
+/** Mirrors `session_event_kind` in @agents/core schema. */
+export type RunEventKind =
+  | "message"
+  | "tool_call"
+  | "tool_result"
+  | "mcp_call"
+  | "skill_invoke"
+  | "comment_posted"
+  | "commit_pushed"
+  | "error";
+
+export interface RunEvent {
+  kind: RunEventKind;
+  /** Arbitrary structured payload — persisted as jsonb. */
+  payload: unknown;
+  /** ISO timestamp when the event was emitted. */
+  ts: string;
+}
+
+// ---------------------------------------------------------------------------
 // Agent config — the shape returned by defineAgent()
 // ---------------------------------------------------------------------------
 

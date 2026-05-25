@@ -14,6 +14,7 @@ import { eq, sql } from "drizzle-orm";
 import { discoverAgents } from "@agents/scheduler";
 import { logger, type AgentConfig } from "@agents/sdk";
 import { getDb, schema } from "@agents/core";
+import { clearRegistry, registerAgent } from "./registry.js";
 
 export interface SyncResult {
   discovered: number;
@@ -66,12 +67,15 @@ export async function syncFileAgents(): Promise<SyncResult> {
   const discovered = await discoverAgents(root);
   const db = getDb();
 
+  clearRegistry();
+
   let inserted = 0;
   let updated = 0;
   const seenNames = new Set<string>();
 
   for (const { config, dir } of discovered) {
     seenNames.add(config.name);
+    registerAgent({ config, dir });
     const systemPrompt = await readSystemPrompt(dir);
     const payload = {
       name: config.name,

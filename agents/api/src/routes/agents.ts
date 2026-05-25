@@ -66,18 +66,44 @@ agentsRouter.get("/:id", async (c) => {
   return c.json({ agent, recentSessions, recentRuns });
 });
 
-agentsRouter.post("/:id/run", (c) => {
+agentsRouter.post("/:id/run", async (c) => {
   const id = c.req.param("id");
   if (!isUuid(id)) {
     return c.json({ error: "invalid_id", message: "id must be a UUID" }, 400);
   }
-  return c.json(
-    {
-      error: "not_implemented",
-      message:
-        "Run-triggering via the API needs the SDK runner to be wired to the Postgres queue. " +
-        "Until that lands, trigger agents via `pnpm agent-run -- <name>` from the CLI.",
-    },
-    501,
-  );
+
+  const db = getDb();
+  const [agent] = await db
+    .select({
+      id: schema.agents.id,
+      name: schema.agents.name,
+      enabled: schema.agents.enabled,
+    })
+    .from(schema.agents)
+    .where(eq(schema.agents.id, id))
+    .limit(1);
+
+  if (!agent) {
+    return c.json({ error: "agent not found" }, 404);
+  }
+  if (!agent.enabled) {
+    return c.json({ error: "agent_disabled" }, 409);
+  }
+
+  const triggerContext = {
+    triggerType: "manual" as const,
+    triggeredAt: new Date().toISOString(),
+    meta: { source: "api" },
+  };
+
+  const [run] = await db
+    .insert(schema.runs)
+    .values({
+      agentId: agent.id,
+      status: "pending",
+      triggerContext,
+    })
+    .returning({ id: schema.runs.id });
+
+  return c.json({ runId: run.id, status: "pending" }, 202);
 });

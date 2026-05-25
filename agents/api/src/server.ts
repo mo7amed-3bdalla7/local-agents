@@ -23,6 +23,7 @@ import {
   skillsRouter,
 } from "./routes/registries.js";
 import { syncFileAgents } from "./sync.js";
+import { startWorker, type WorkerHandle } from "./worker.js";
 
 try {
   process.loadEnvFile();
@@ -72,13 +73,25 @@ async function main() {
     logger.warn("File-agent sync failed", { error: String(err) }),
   );
 
+  let worker: WorkerHandle | undefined;
+  if (process.env.API_DISABLE_WORKER !== "1") {
+    worker = startWorker();
+    logger.info("worker started");
+  } else {
+    logger.info("worker disabled via API_DISABLE_WORKER=1");
+  }
+
   const app = createApp();
   const server = serve({ fetch: app.fetch, port: PORT });
   logger.info("api listening", { port: PORT });
 
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     logger.info("api shutting down");
     server.close();
+    if (worker) await worker.stop();
     await closeDb();
     process.exit(0);
   };

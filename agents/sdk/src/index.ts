@@ -17,6 +17,8 @@ export type {
   GitHubIssueEvent,
   GitHubPREvent,
   GitHubTrigger,
+  RunEvent,
+  RunEventKind,
   RunResult,
   RunStatus,
   Trigger,
