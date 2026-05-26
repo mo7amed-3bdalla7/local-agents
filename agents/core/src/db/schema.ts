@@ -76,6 +76,14 @@ export const prActivityStatus = pgEnum("pr_activity_status", [
   "failed",
 ]);
 
+export const pendingActionStatus = pgEnum("pending_action_status", [
+  "pending",
+  "approved",
+  "rejected",
+  "executed",
+  "failed",
+]);
+
 // ---------------------------------------------------------------------------
 // Users + auth sessions — slice-8 multi-tenancy
 // ---------------------------------------------------------------------------
@@ -396,6 +404,60 @@ export const secrets = pgTable("secrets", {
 // ---------------------------------------------------------------------------
 // PR activity — unified audit log for posted comments and pushed commits
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Pending actions — human-in-the-loop approval queue
+//
+// Side-effecting actions an agent wants to take (post a comment, push a
+// commit, send a Slack message, ...) land here in status='pending' until a
+// human approves. The executor then dispatches per-kind and writes the
+// result back. Generic by design so future action types just add a new
+// `kind` + executor.
+// ---------------------------------------------------------------------------
+
+export const pendingActions = pgTable(
+  "pending_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id").references(() => sessions.id, {
+      onDelete: "set null",
+    }),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    /** Denormalized — null mirrors agents.ownerId (file-source agents). */
+    ownerId: uuid("owner_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    /** e.g. 'pr_comment' | 'slack_message' | 'shell_command'. */
+    kind: text("kind").notNull(),
+    /** Short label for the UI list ("Comment on PR #42"). */
+    title: text("title").notNull(),
+    /** Optional: why the agent wants to do this. */
+    description: text("description"),
+    /** Kind-specific payload — what the executor consumes. */
+    payload: jsonb("payload").notNull(),
+    status: pendingActionStatus("status").notNull().default("pending"),
+    decidedBy: uuid("decided_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    executedAt: timestamp("executed_at", { withTimezone: true }),
+    /** Executor return value (comment id+url for pr_comment, etc.). */
+    executorResult: jsonb("executor_result"),
+    executorError: text("executor_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    ownerStatusIdx: index("pending_actions_owner_status_idx").on(
+      t.ownerId,
+      t.status,
+    ),
+    sessionIdx: index("pending_actions_session_idx").on(t.sessionId),
+  }),
+);
 
 export const prActivity = pgTable(
   "pr_activity",

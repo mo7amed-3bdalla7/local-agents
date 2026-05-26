@@ -66,6 +66,22 @@ export {
 } from "./mcp/manager.js";
 
 export {
+  approveAction,
+  enqueueAction,
+  executePendingAction,
+  getPendingAction,
+  listExecutors,
+  listPendingActions,
+  registerExecutor,
+  rejectAction,
+  type EnqueueActionArgs,
+  type ExecutorFn,
+  type ListPendingArgs,
+  type PendingAction,
+  type PendingActionStatus,
+} from "./approvals/index.js";
+
+export {
   bootstrapDefaultUser,
   countUsers,
   createSession,
