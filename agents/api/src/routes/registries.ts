@@ -9,7 +9,7 @@
  */
 
 import { Hono } from "hono";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   addConnector,
   addMcpServer,
@@ -22,6 +22,7 @@ import {
   type McpTransport,
 } from "@agents/core";
 import { isUuid } from "../util.js";
+import { abortRun } from "../worker.js";
 
 // ---------------------------------------------------------------------------
 // Connectors
@@ -264,6 +265,62 @@ prActivityRouter.get("/", async (c) => {
 // ---------------------------------------------------------------------------
 
 export const runsRouter = new Hono();
+
+/**
+ * Stop an in-flight run. Looks up the row's status to give the right error
+ * shape (404 / 409) before signaling the worker's AbortController.
+ *
+ * Run id is a bigserial integer, not a UUID.
+ */
+runsRouter.post("/:id/abort", async (c) => {
+  const idParam = c.req.param("id");
+  const runId = Number(idParam);
+  if (!Number.isInteger(runId) || runId < 1) {
+    return c.json({ error: "invalid_id", message: "id must be a positive integer" }, 400);
+  }
+  const db = getDb();
+  const [row] = await db
+    .select({ id: schema.runs.id, status: schema.runs.status })
+    .from(schema.runs)
+    .where(eq(schema.runs.id, runId))
+    .limit(1);
+  if (!row) return c.json({ error: "run not found" }, 404);
+
+  // Only active runs can be cancelled mid-flight. Pending runs aren't
+  // executing yet — we just dequeue them by marking aborted directly.
+  if (row.status === "pending") {
+    await db
+      .update(schema.runs)
+      .set({ status: "aborted", finishedAt: new Date(), error: "Aborted before start" })
+      .where(
+        and(
+          eq(schema.runs.id, runId),
+          inArray(schema.runs.status, ["pending"] as const),
+        ),
+      );
+    return c.json({ runId, status: "aborted", method: "dequeue" }, 202);
+  }
+  if (row.status !== "active") {
+    return c.json(
+      { error: "not_in_flight", message: `run is ${row.status}; can only abort pending/active runs` },
+      409,
+    );
+  }
+
+  const signalled = abortRun(runId);
+  if (!signalled) {
+    return c.json(
+      {
+        error: "no_worker",
+        message:
+          "run is active in the DB but no worker on this process holds its controller (multi-worker setup?)",
+      },
+      409,
+    );
+  }
+  return c.json({ runId, status: "abort_signalled", method: "signal" }, 202);
+});
+
 runsRouter.get("/", async (c) => {
   const db = getDb();
   const agentId = c.req.query("agentId");

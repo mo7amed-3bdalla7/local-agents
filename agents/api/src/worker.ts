@@ -25,6 +25,30 @@ import { getAgent } from "./registry.js";
 
 const POLL_INTERVAL_MS = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 500);
 
+/**
+ * AbortControllers for runs the worker has claimed. Populated by processRun
+ * when it starts a run, deleted in its finally. The api's abort route uses
+ * this to signal cancellation by run id.
+ *
+ * Module-level (not per-worker) so the api server route can find any in-flight
+ * run regardless of which worker instance claimed it. Single-worker for now,
+ * but the multi-worker case will need a row-level lock + IPC; abort would
+ * become a Postgres NOTIFY in that world.
+ */
+const activeAborts = new Map<number, AbortController>();
+
+/**
+ * Signal an in-flight run to stop. Returns true if a controller was found
+ * and aborted; false if the run isn't in flight on THIS process (already
+ * done, pending in the queue, or running on another worker).
+ */
+export function abortRun(runId: number): boolean {
+  const ctl = activeAborts.get(runId);
+  if (!ctl) return false;
+  ctl.abort();
+  return true;
+}
+
 export interface WorkerHandle {
   stop: () => Promise<void>;
 }
@@ -286,6 +310,9 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
     }
   };
 
+  // Register so the api's abort route can find this run's controller.
+  activeAborts.set(run.id, abort);
+
   const promise = (async () => {
     const startMs = Date.now();
     try {
@@ -353,6 +380,8 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
         .set({ status: "failed", finishedAt })
         .where(eq(schema.sessions.id, session.id));
       logger.error("Worker run threw", { runId: run.id, error: message });
+    } finally {
+      activeAborts.delete(run.id);
     }
   })();
 

@@ -1,11 +1,12 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Play, Trash2 } from "lucide-react";
+import { ArrowLeft, Play, Square, Trash2 } from "lucide-react";
 import {
   api,
   ApiError,
   type Connector,
   type McpServer,
+  type RunSummary,
   type Skill,
 } from "../api.ts";
 import { PageHeader } from "../components/PageHeader.tsx";
@@ -159,22 +160,13 @@ export function AgentDetail() {
               <div className="text-sm text-zinc-500">No runs yet.</div>
             )}
             {recentRuns.map((run) => (
-              <div
+              <RecentRunRow
                 key={run.id}
-                className="flex items-center justify-between border-b border-zinc-800 py-2 text-sm last:border-b-0"
-              >
-                <div className="flex items-center gap-2">
-                  <StatusBadge status={run.status} />
-                  <span className="text-zinc-400">
-                    {new Date(run.createdAt).toLocaleString()}
-                  </span>
-                </div>
-                {run.durationMs != null && (
-                  <span className="text-xs text-zinc-500">
-                    {(run.durationMs / 1000).toFixed(1)}s
-                  </span>
-                )}
-              </div>
+                run={run}
+                onAfterAbort={() =>
+                  queryClient.invalidateQueries({ queryKey: ["agent", id] })
+                }
+              />
             ))}
           </Section>
 
@@ -283,6 +275,50 @@ function Section({
         {title}
       </h3>
       <div>{children}</div>
+    </div>
+  );
+}
+
+function RecentRunRow({
+  run,
+  onAfterAbort,
+}: {
+  run: RunSummary;
+  onAfterAbort: () => void;
+}) {
+  const inFlight = run.status === "pending" || run.status === "active";
+
+  const abortMutation = useMutation({
+    mutationFn: () => api.runs.abort(run.id),
+    onSuccess: onAfterAbort,
+  });
+
+  return (
+    <div className="flex items-center justify-between border-b border-zinc-800 py-2 text-sm last:border-b-0">
+      <div className="flex items-center gap-2">
+        <StatusBadge status={run.status} />
+        <span className="text-zinc-400">
+          {new Date(run.createdAt).toLocaleString()}
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        {inFlight && (
+          <button
+            type="button"
+            onClick={() => abortMutation.mutate()}
+            disabled={abortMutation.isPending}
+            title="Abort this run"
+            className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
+          >
+            <Square className="size-3" /> Stop
+          </button>
+        )}
+        {run.durationMs != null && (
+          <span className="text-xs text-zinc-500">
+            {(run.durationMs / 1000).toFixed(1)}s
+          </span>
+        )}
+      </div>
     </div>
   );
 }

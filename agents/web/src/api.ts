@@ -107,6 +107,11 @@ export const api = {
       const qs = params.toString();
       return request<{ runs: RunSummary[] }>(`/runs${qs ? `?${qs}` : ""}`);
     },
+    abort: (id: number) =>
+      request<{ runId: number; status: string; method: string }>(
+        `/runs/${id}/abort`,
+        { method: "POST" },
+      ),
   },
   connectors: {
     list: () => request<{ connectors: Connector[] }>("/connectors"),
