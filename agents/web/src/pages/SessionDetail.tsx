@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { api, type SessionEvent } from "../api.ts";
+import { EventCard } from "../components/EventCard.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
 import { StatusBadge } from "../components/StatusBadge.tsx";
 import { ErrorBox } from "./AgentsList.tsx";
@@ -120,20 +121,3 @@ export function SessionDetail() {
   );
 }
 
-function EventCard({ event }: { event: SessionEvent }) {
-  return (
-    <li className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-      <div className="mb-1.5 flex items-center justify-between text-xs">
-        <span className="rounded bg-zinc-800 px-2 py-0.5 font-mono uppercase tracking-wider text-zinc-300">
-          {event.kind}
-        </span>
-        <span className="text-zinc-500">
-          {new Date(event.ts).toLocaleTimeString()}
-        </span>
-      </div>
-      <pre className="overflow-x-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-zinc-400">
-        {JSON.stringify(event.payload, null, 2)}
-      </pre>
-    </li>
-  );
-}
