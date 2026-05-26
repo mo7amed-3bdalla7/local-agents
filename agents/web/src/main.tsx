@@ -17,6 +17,9 @@ import { PrActivityList } from "./pages/PrActivityList.tsx";
 import { ReposList } from "./pages/ReposList.tsx";
 import { RepoNew } from "./pages/RepoNew.tsx";
 import { UsagePage } from "./pages/UsagePage.tsx";
+import { LoginPage } from "./pages/LoginPage.tsx";
+import { AuthProvider } from "./auth/AuthContext.tsx";
+import { RequireAuth } from "./auth/RequireAuth.tsx";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -32,25 +35,34 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route index element={<AgentsList />} />
-            <Route path="agents" element={<AgentsList />} />
-            <Route path="agents/new" element={<AgentNew />} />
-            <Route path="agents/:id" element={<AgentDetail />} />
-            <Route path="sessions" element={<SessionsList />} />
-            <Route path="sessions/:id" element={<SessionDetail />} />
-            <Route path="connectors" element={<ConnectorsList />} />
-            <Route path="connectors/new" element={<ConnectorNew />} />
-            <Route path="skills" element={<SkillsList />} />
-            <Route path="mcp-servers" element={<McpServersList />} />
-            <Route path="mcp-servers/new" element={<McpServerNew />} />
-            <Route path="repos" element={<ReposList />} />
-            <Route path="repos/new" element={<RepoNew />} />
-            <Route path="pr-activity" element={<PrActivityList />} />
-            <Route path="usage" element={<UsagePage />} />
-          </Route>
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              element={
+                <RequireAuth>
+                  <Layout />
+                </RequireAuth>
+              }
+            >
+              <Route index element={<AgentsList />} />
+              <Route path="agents" element={<AgentsList />} />
+              <Route path="agents/new" element={<AgentNew />} />
+              <Route path="agents/:id" element={<AgentDetail />} />
+              <Route path="sessions" element={<SessionsList />} />
+              <Route path="sessions/:id" element={<SessionDetail />} />
+              <Route path="connectors" element={<ConnectorsList />} />
+              <Route path="connectors/new" element={<ConnectorNew />} />
+              <Route path="skills" element={<SkillsList />} />
+              <Route path="mcp-servers" element={<McpServersList />} />
+              <Route path="mcp-servers/new" element={<McpServerNew />} />
+              <Route path="repos" element={<ReposList />} />
+              <Route path="repos/new" element={<RepoNew />} />
+              <Route path="pr-activity" element={<PrActivityList />} />
+              <Route path="usage" element={<UsagePage />} />
+            </Route>
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,

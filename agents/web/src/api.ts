@@ -7,6 +7,7 @@ const BASE = "/api";
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    credentials: "same-origin",
     ...init,
   });
   if (!res.ok) {
@@ -16,10 +17,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // ignore
     }
-    const message =
-      (body && typeof body === "object" && "message" in body
-        ? String((body as { message: unknown }).message)
-        : "") || `${res.status} ${res.statusText}`;
+    const fromBody =
+      body && typeof body === "object"
+        ? ("message" in body && body.message
+            ? String((body as { message: unknown }).message)
+            : "error" in body && body.error
+              ? String((body as { error: unknown }).error)
+              : "")
+        : "";
+    const message = fromBody || `${res.status} ${res.statusText}`;
     throw new ApiError(res.status, message, body);
   }
   if (res.status === 204) {
@@ -40,6 +46,22 @@ export class ApiError extends Error {
 }
 
 export const api = {
+  auth: {
+    me: () => request<{ user: AuthUser }>("/auth/me"),
+    login: (email: string, password: string) =>
+      request<{ user: AuthUser }>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      }),
+    logout: () => request<unknown>("/auth/logout", { method: "POST" }),
+    signupOpen: () =>
+      request<{ signupOpen: boolean }>("/auth/signup-open"),
+    signup: (email: string, password: string, name: string) =>
+      request<{ user: AuthUser }>("/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({ email, password, name }),
+      }),
+  },
   agents: {
     list: () => request<{ agents: AgentSummary[] }>("/agents"),
     get: (id: string) =>
@@ -199,6 +221,12 @@ export interface CreateRepoArgs {
 }
 
 // --- Types -----------------------------------------------------------------
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+}
 
 export interface AgentSummary {
   id: string;
