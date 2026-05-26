@@ -14,6 +14,7 @@ import {
   logger,
   type AgentConfig,
   type CronTrigger,
+  type FileTrigger,
   type Trigger,
   type WebhookTrigger,
 } from "@agents/sdk";
@@ -24,6 +25,7 @@ import {
   registerWebhookTriggers,
   clearWebhookRoutes,
 } from "./webhook.js";
+import { registerFileTriggers, stopAllFileWatchers } from "./file.js";
 
 export interface TriggersHandle {
   stop: () => Promise<void>;
@@ -35,6 +37,10 @@ function isCron(t: Trigger): t is CronTrigger {
 
 function isWebhook(t: Trigger): t is WebhookTrigger {
   return t.type === "webhook";
+}
+
+function isFile(t: Trigger): t is FileTrigger {
+  return t.type === "file";
 }
 
 interface CollectedAgent {
@@ -81,16 +87,23 @@ export async function registerAllTriggers(): Promise<TriggersHandle> {
     .filter((a) => a.triggers.length > 0);
   const webhookCount = registerWebhookTriggers(webhookAgents);
 
+  const fileAgents = agents
+    .map((a) => ({ name: a.name, triggers: a.triggers.filter(isFile) }))
+    .filter((a) => a.triggers.length > 0);
+  const fileCount = registerFileTriggers(fileAgents);
+
   logger.info("Triggers registered", {
     agents: agents.length,
     cronCount,
     webhookCount,
+    fileCount,
   });
 
   return {
     async stop() {
       stopAllCronTasks();
       clearWebhookRoutes();
+      await stopAllFileWatchers();
     },
   };
 }
