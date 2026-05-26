@@ -15,6 +15,7 @@ import { McpServersList } from "./pages/McpServersList.tsx";
 import { McpServerNew } from "./pages/McpServerNew.tsx";
 import { PrActivityList } from "./pages/PrActivityList.tsx";
 import { ReposList } from "./pages/ReposList.tsx";
+import { RepoNew } from "./pages/RepoNew.tsx";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -44,6 +45,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="mcp-servers" element={<McpServersList />} />
             <Route path="mcp-servers/new" element={<McpServerNew />} />
             <Route path="repos" element={<ReposList />} />
+            <Route path="repos/new" element={<RepoNew />} />
             <Route path="pr-activity" element={<PrActivityList />} />
           </Route>
         </Routes>

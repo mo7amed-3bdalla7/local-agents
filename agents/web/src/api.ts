@@ -140,8 +140,21 @@ export const api = {
   },
   repos: {
     list: () => request<{ repos: Repo[] }>("/repos"),
+    create: (args: CreateRepoArgs) =>
+      request<{ repo: Repo }>("/repos", {
+        method: "POST",
+        body: JSON.stringify(args),
+      }),
+    remove: (id: string) =>
+      request<unknown>(`/repos/${id}`, { method: "DELETE" }),
   },
 };
+
+export interface CreateRepoArgs {
+  githubFullName: string;
+  defaultBranch?: string;
+  testCommand?: string;
+}
 
 // --- Types -----------------------------------------------------------------
 
