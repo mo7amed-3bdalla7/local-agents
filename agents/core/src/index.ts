@@ -103,6 +103,16 @@ export {
 } from "./approvals/index.js";
 
 export {
+  createApiToken,
+  listApiTokens,
+  revokeApiToken,
+  verifyApiToken,
+  type ApiToken,
+  type CreateTokenArgs,
+  type CreateTokenResult,
+} from "./auth/tokens.js";
+
+export {
   bootstrapDefaultUser,
   countUsers,
   createSession,

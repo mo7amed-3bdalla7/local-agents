@@ -22,6 +22,7 @@ import {
   bootstrapDefaultUser,
   closeDb,
   validateSession,
+  verifyApiToken,
   type User,
 } from "@agents/core";
 import { authRouter, COOKIE_NAME } from "./routes/auth.js";
@@ -29,6 +30,7 @@ import { agentsRouter } from "./routes/agents.js";
 import { approvalsRouter } from "./routes/approvals.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { sessionsRouter } from "./routes/sessions.js";
+import { tokensRouter } from "./routes/tokens.js";
 import { registerPrCommentExecutor } from "./executors/pr-comment.js";
 import { registerConsoleSender } from "./senders/console.js";
 import { registerWebhookSender } from "./senders/webhook.js";
@@ -92,11 +94,24 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
   api.route("/auth", authRouter);
 
   // Auth middleware: every /api/* request except healthz + /auth/* must
-  // carry a valid session cookie. The middleware sets `c.var.user` for
-  // downstream handlers.
+  // be authenticated. Two paths accepted:
+  //   1. Authorization: Bearer agt_<token>  — programmatic / CLI access
+  //   2. Cookie session                     — browser UI
+  // First match wins; downstream handlers read `c.var.user`.
   api.use("*", async (c, next) => {
     const path = c.req.path;
     if (isPublicPath(path)) return next();
+
+    const authz = c.req.header("authorization") ?? c.req.header("Authorization");
+    if (authz && authz.startsWith("Bearer ")) {
+      const token = authz.slice("Bearer ".length).trim();
+      const user = await verifyApiToken(token);
+      if (user) {
+        c.set("user", user);
+        return next();
+      }
+      return c.json({ error: "invalid_token" }, 401);
+    }
 
     const sid = getCookie(c, COOKIE_NAME);
     if (!sid) {
@@ -135,6 +150,7 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
   api.route("/usage", usageRouter);
   api.route("/approvals", approvalsRouter);
   api.route("/notifications", notificationsRouter);
+  api.route("/tokens", tokensRouter);
   app.route("/api", api);
 
   app.onError((err, c) => {

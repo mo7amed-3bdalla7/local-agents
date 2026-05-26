@@ -111,6 +111,30 @@ export const users = pgTable("users", {
     .defaultNow(),
 });
 
+export const apiTokens = pgTable(
+  "api_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** sha256(token) hex — we never store the plaintext. */
+    tokenHash: text("token_hash").notNull().unique(),
+    /** First 8 chars after the `agt_` prefix, for UI display. Non-secret. */
+    prefix: text("prefix").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    ownerIdx: index("api_tokens_owner_idx").on(t.ownerId),
+  }),
+);
+
 export const authSessions = pgTable(
   "auth_sessions",
   {
