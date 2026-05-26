@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Activity,
   BarChart3,
+  Bell,
   Boxes,
   Bot,
   FolderGit2,
@@ -31,6 +32,7 @@ const NAV: NavItem[] = [
   { to: "/repos", label: "Repos", icon: FolderGit2, end: false },
   { to: "/pr-activity", label: "PR activity", icon: GitPullRequest, end: false },
   { to: "/approvals", label: "Approvals", icon: ShieldCheck, end: false },
+  { to: "/notifications", label: "Notifications", icon: Bell, end: false },
   { to: "/usage", label: "Usage", icon: BarChart3, end: false },
 ];
 

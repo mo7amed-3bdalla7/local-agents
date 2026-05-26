@@ -179,6 +179,49 @@ export const api = {
     get: (days?: number) =>
       request<Usage>(`/usage${days != null ? `?days=${days}` : ""}`),
   },
+  notifications: {
+    listChannels: () =>
+      request<{ channels: NotificationChannel[]; senders: string[] }>(
+        "/notifications/channels",
+      ),
+    createChannel: (args: CreateChannelArgs) =>
+      request<{ channel: NotificationChannel }>("/notifications/channels", {
+        method: "POST",
+        body: JSON.stringify(args),
+      }),
+    removeChannel: (id: string) =>
+      request<unknown>(`/notifications/channels/${id}`, { method: "DELETE" }),
+    testChannel: (id: string) =>
+      request<{ ok: boolean }>(`/notifications/channels/${id}/test`, {
+        method: "POST",
+      }),
+    listSubscriptions: () =>
+      request<{
+        subscriptions: NotificationSubscription[];
+        events: NotificationEventName[];
+      }>("/notifications/subscriptions"),
+    setSubscription: (
+      event: NotificationEventName,
+      channelId: string,
+      enabled: boolean,
+    ) =>
+      request<{ subscription: NotificationSubscription }>(
+        "/notifications/subscriptions",
+        {
+          method: "PUT",
+          body: JSON.stringify({ event, channelId, enabled }),
+        },
+      ),
+    removeSubscription: (event: NotificationEventName, channelId: string) =>
+      request<unknown>(
+        `/notifications/subscriptions?event=${event}&channelId=${channelId}`,
+        { method: "DELETE" },
+      ),
+    listDeliveries: () =>
+      request<{ deliveries: NotificationDelivery[] }>(
+        "/notifications/deliveries",
+      ),
+  },
   approvals: {
     list: (statuses?: PendingActionStatus[]) => {
       const qs = statuses && statuses.length > 0
@@ -198,6 +241,49 @@ export const api = {
       }),
   },
 };
+
+export type NotificationEventName =
+  | "run_succeeded"
+  | "run_failed"
+  | "approval_pending"
+  | "approval_failed";
+
+export interface NotificationChannel {
+  id: string;
+  ownerId: string;
+  kind: string;
+  displayName: string;
+  configJson: Record<string, unknown>;
+  secretRef: string | null;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface CreateChannelArgs {
+  kind: string;
+  displayName: string;
+  configJson: Record<string, unknown>;
+  secret?: string;
+}
+
+export interface NotificationSubscription {
+  ownerId: string;
+  event: NotificationEventName;
+  channelId: string;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface NotificationDelivery {
+  id: number;
+  channelId: string;
+  event: NotificationEventName;
+  subjectRef: Record<string, unknown>;
+  senderResult: Record<string, unknown> | null;
+  status: "sent" | "failed";
+  error: string | null;
+  sentAt: string;
+}
 
 export type PendingActionStatus =
   | "pending"

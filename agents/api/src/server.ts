@@ -27,8 +27,11 @@ import {
 import { authRouter, COOKIE_NAME } from "./routes/auth.js";
 import { agentsRouter } from "./routes/agents.js";
 import { approvalsRouter } from "./routes/approvals.js";
+import { notificationsRouter } from "./routes/notifications.js";
 import { sessionsRouter } from "./routes/sessions.js";
 import { registerPrCommentExecutor } from "./executors/pr-comment.js";
+import { registerConsoleSender } from "./senders/console.js";
+import { registerWebhookSender } from "./senders/webhook.js";
 import {
   connectorsRouter,
   mcpRouter,
@@ -131,6 +134,7 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
   api.route("/pr-activity", prActivityRouter);
   api.route("/usage", usageRouter);
   api.route("/approvals", approvalsRouter);
+  api.route("/notifications", notificationsRouter);
   app.route("/api", api);
 
   app.onError((err, c) => {
@@ -167,6 +171,10 @@ async function main() {
   // Register action executors so approve calls can dispatch them
   // synchronously. New action kinds register here.
   registerPrCommentExecutor();
+
+  // Register notification senders. New transports plug in here.
+  registerConsoleSender();
+  registerWebhookSender();
 
   await syncFileAgents().catch((err) =>
     logger.warn("File-agent sync failed", { error: String(err) }),
