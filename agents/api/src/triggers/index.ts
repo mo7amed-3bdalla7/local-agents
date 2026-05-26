@@ -33,6 +33,13 @@ export interface TriggersHandle {
   stop: () => Promise<void>;
 }
 
+/**
+ * Module-level handle to the currently-registered triggers. Used by
+ * reloadAllTriggers() so the api can re-register without a process restart
+ * after an agent CRUD operation. Updated whenever registerAllTriggers() runs.
+ */
+let currentHandle: TriggersHandle | null = null;
+
 function isCron(t: Trigger): t is CronTrigger {
   return t.type === "cron";
 }
@@ -111,7 +118,7 @@ export async function registerAllTriggers(): Promise<TriggersHandle> {
     githubCount,
   });
 
-  return {
+  const handle: TriggersHandle = {
     async stop() {
       stopAllCronTasks();
       clearWebhookRoutes();
@@ -119,4 +126,24 @@ export async function registerAllTriggers(): Promise<TriggersHandle> {
       stopAllGitHubPollers();
     },
   };
+  currentHandle = handle;
+  return handle;
+}
+
+/**
+ * Stop everything currently registered and re-register from scratch. Called
+ * after agent CRUD so changes to triggers (a new cron, an added webhook
+ * path, …) take effect without requiring an api restart.
+ *
+ * Coarse-grained: tears down + rebuilds everything rather than diffing.
+ * Acceptable because CRUD is low-frequency and registration is cheap
+ * (chokidar reopens its watch, node-cron rebinds, gh poller resets its
+ * fresh-repo guard so the next poll snapshots silently).
+ */
+export async function reloadAllTriggers(): Promise<TriggersHandle> {
+  if (currentHandle) {
+    await currentHandle.stop();
+    currentHandle = null;
+  }
+  return registerAllTriggers();
 }

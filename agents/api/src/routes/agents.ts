@@ -1,7 +1,23 @@
 import { Hono, type Context } from "hono";
 import { and, desc, eq } from "drizzle-orm";
+import { logger } from "@agents/sdk";
 import { getDb, schema } from "@agents/core";
 import { isUuid } from "../util.js";
+import { reloadAllTriggers } from "../triggers/index.js";
+
+/**
+ * Fire-and-forget trigger reload after agent CRUD so a freshly created /
+ * updated / deleted agent's triggers register without a process restart.
+ * Runs in the background; failure is logged but doesn't fail the request.
+ */
+function reloadTriggersInBackground(reason: string): void {
+  void reloadAllTriggers().catch((err) =>
+    logger.warn("Trigger reload failed", {
+      reason,
+      error: err instanceof Error ? err.message : String(err),
+    }),
+  );
+}
 
 export const agentsRouter = new Hono();
 
@@ -80,6 +96,7 @@ agentsRouter.post("/", async (c) => {
       enabled: true,
     })
     .returning();
+  reloadTriggersInBackground(`agent created: ${row.name}`);
   return c.json({ agent: row }, 201);
 });
 
@@ -141,6 +158,10 @@ agentsRouter.patch("/:id", async (c) => {
     .set(update)
     .where(eq(schema.agents.id, id))
     .returning();
+  // Reload only when something that triggers care about changed.
+  if (update.configJson !== undefined || update.enabled !== undefined) {
+    reloadTriggersInBackground(`agent updated: ${row.name}`);
+  }
   return c.json({ agent: row });
 });
 
@@ -163,6 +184,7 @@ agentsRouter.delete("/:id", async (c) => {
     );
   }
   await db.delete(schema.agents).where(eq(schema.agents.id, id));
+  reloadTriggersInBackground(`agent deleted: ${id}`);
   return c.body(null, 204);
 });
 
