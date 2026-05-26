@@ -22,10 +22,13 @@ export function AgentDetail() {
     queryKey: ["agent", id],
     queryFn: () => api.agents.get(id),
     enabled: Boolean(id),
+    // Always poll while the page is open so externally-triggered runs
+    // (cron, webhook, file, github) appear without a manual refresh.
+    // Tighten to 2s when a run is in flight for snappier badge transitions.
     refetchInterval: (query) =>
       query.state.data?.recentRuns.some((r) => IN_FLIGHT_STATUSES.has(r.status))
         ? 2000
-        : false,
+        : 5000,
   });
 
   // Full registries are needed to render the un-attached items as togglable.

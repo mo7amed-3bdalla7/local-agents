@@ -11,6 +11,9 @@ export function SessionsList() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["sessions"],
     queryFn: api.sessions.list,
+    // Always poll while the page is open so externally-triggered sessions
+    // (cron, webhook, file, github) appear without a manual refresh.
+    refetchInterval: 5000,
   });
 
   return (
