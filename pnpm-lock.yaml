@@ -29,6 +29,9 @@ importers:
       '@agents/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.3.150
+        version: 0.3.150(@anthropic-ai/sdk@0.98.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.14(hono@4.12.23)
@@ -47,6 +50,9 @@ importers:
       node-cron:
         specifier: ^3.0.3
         version: 3.0.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

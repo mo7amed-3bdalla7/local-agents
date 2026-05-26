@@ -139,6 +139,12 @@ export interface ExecuteAgentOptions {
    * in (load all discovered skills).
    */
   skills?: string[];
+  /**
+   * Extra tool names to append to the agent's allowedTools list. Used to
+   * grant access to system-injected MCP tools (e.g. the approvals server)
+   * without the agent author having to allowlist them in their config.
+   */
+  extraAllowedTools?: string[];
 }
 
 /**
@@ -158,6 +164,7 @@ export async function executeAgent(
     extraEnv,
     mcpServers,
     skills,
+    extraAllowedTools,
   } = opts;
   const startedAt = new Date().toISOString();
   const start = Date.now();
@@ -184,6 +191,7 @@ export async function executeAgent(
       onEvent,
       mcpServers,
       skills,
+      extraAllowedTools,
     );
   } finally {
     for (const key of addedEnvKeys) {
@@ -218,6 +226,7 @@ async function executeAgentCore(
   onEvent?: ExecuteAgentOptions["onEvent"],
   mcpServers?: Record<string, McpServerConfig>,
   skills?: string[],
+  extraAllowedTools?: string[],
 ): Promise<RunResult> {
   const log = await openRunLog(
     agentDir,
@@ -268,15 +277,20 @@ async function executeAgentCore(
       const cwd = config.execution?.cwd ?? agentDir;
       let output = "";
 
+      const baseTools = config.execution?.tools ?? [
+        "Read",
+        "Edit",
+        "Bash",
+        "Glob",
+        "Grep",
+      ];
+      const allowedTools =
+        extraAllowedTools && extraAllowedTools.length > 0
+          ? [...baseTools, ...extraAllowedTools]
+          : baseTools;
       const queryOptions: Record<string, unknown> = {
         systemPrompt: systemPrompt || undefined,
-        allowedTools: config.execution?.tools ?? [
-          "Read",
-          "Edit",
-          "Bash",
-          "Glob",
-          "Grep",
-        ],
+        allowedTools,
         permissionMode: (config.execution?.permissionMode ?? "acceptEdits") as PermissionMode,
         maxTurns: config.execution?.maxTurns ?? 10,
         cwd,

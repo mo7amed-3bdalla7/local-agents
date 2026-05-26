@@ -23,6 +23,11 @@ import { getDb, schema } from "@agents/core";
 import { loadDbAgent } from "./db-agents.js";
 import { getAgent } from "./registry.js";
 import { fireAgentPipeline } from "./triggers/agent-pipeline.js";
+import {
+  APPROVALS_SERVER_NAME,
+  APPROVALS_TOOL_FQN,
+  buildApprovalsMcpServer,
+} from "./mcp/approvals-server.js";
 
 const POLL_INTERVAL_MS = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 500);
 
@@ -252,6 +257,7 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
     .select({
       name: schema.agents.name,
       enabled: schema.agents.enabled,
+      ownerId: schema.agents.ownerId,
     })
     .from(schema.agents)
     .where(eq(schema.agents.id, run.agentId))
@@ -317,10 +323,24 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
   const promise = (async () => {
     const startMs = Date.now();
     try {
-      const [mcpServers, skills] = await Promise.all([
+      const [attachedMcp, skills] = await Promise.all([
         loadAttachedMcpServers(run.agentId),
         loadAttachedSkills(run.agentId),
       ]);
+
+      // System-injected approvals MCP server — always available so agents
+      // can stage side effects for human review. Owner is resolved from the
+      // agent row (null for file-source agents).
+      const approvalsServer = buildApprovalsMcpServer({
+        agentId: run.agentId,
+        sessionId: session.id,
+        ownerId: agentRow.ownerId,
+      });
+      const mcpServers = {
+        ...attachedMcp,
+        [APPROVALS_SERVER_NAME]: approvalsServer,
+      };
+
       if (Object.keys(mcpServers).length > 0) {
         logger.info("Injecting MCP servers into run", {
           agentId: run.agentId,
@@ -343,6 +363,7 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
         },
         mcpServers,
         skills,
+        extraAllowedTools: [APPROVALS_TOOL_FQN],
       });
 
       const finishedAt = new Date(result.finishedAt);

@@ -28,6 +28,7 @@ import { authRouter, COOKIE_NAME } from "./routes/auth.js";
 import { agentsRouter } from "./routes/agents.js";
 import { approvalsRouter } from "./routes/approvals.js";
 import { sessionsRouter } from "./routes/sessions.js";
+import { registerPrCommentExecutor } from "./executors/pr-comment.js";
 import {
   connectorsRouter,
   mcpRouter,
@@ -162,6 +163,10 @@ async function main() {
         : undefined,
     });
   }
+
+  // Register action executors so approve calls can dispatch them
+  // synchronously. New action kinds register here.
+  registerPrCommentExecutor();
 
   await syncFileAgents().catch((err) =>
     logger.warn("File-agent sync failed", { error: String(err) }),
