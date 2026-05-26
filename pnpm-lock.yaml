@@ -41,10 +41,16 @@ importers:
       hono:
         specifier: ^4.6.13
         version: 4.12.23
+      node-cron:
+        specifier: ^3.0.3
+        version: 3.0.3
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.19
+      '@types/node-cron':
+        specifier: ^3.0.11
+        version: 3.0.11
       tsx:
         specifier: ^4.19.2
         version: 4.22.3

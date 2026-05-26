@@ -32,6 +32,7 @@ import { syncFileAgents } from "./sync.js";
 import { syncSkills } from "./skills/sync.js";
 import { workspaceRoot } from "./paths.js";
 import { startWorker, type WorkerHandle } from "./worker.js";
+import { registerAllTriggers, type TriggersHandle } from "./triggers/index.js";
 
 // Load the repo-root .env (not the sub-package one) so `pnpm api` from the
 // workspace root or `pnpm --filter=@agents/api dev` from anywhere both work.
@@ -96,6 +97,13 @@ async function main() {
     logger.info("worker disabled via API_DISABLE_WORKER=1");
   }
 
+  let triggers: TriggersHandle | undefined;
+  if (process.env.API_DISABLE_TRIGGERS !== "1") {
+    triggers = await registerAllTriggers();
+  } else {
+    logger.info("triggers disabled via API_DISABLE_TRIGGERS=1");
+  }
+
   const app = createApp();
   const apiHandler = getRequestListener(app.fetch);
 
@@ -135,6 +143,7 @@ async function main() {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info("shutting down");
+    if (triggers) await triggers.stop();
     if (worker) await worker.stop();
     await vite.close().catch(() => undefined);
     await closeDb();
