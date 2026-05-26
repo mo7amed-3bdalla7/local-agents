@@ -14,6 +14,7 @@ import { Hono } from "hono";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   approveAction,
+  dispatchEvent,
   executePendingAction,
   getDb,
   getPendingAction,
@@ -95,6 +96,22 @@ approvalsRouter.post("/:id/approve", async (c) => {
   // final state in one response.
   try {
     const executed = await executePendingAction(id);
+    if (executed.status === "failed") {
+      // Executor ran but its side-effect failed (e.g. gh returned non-zero).
+      // dispatch approval_failed so the user knows without polling the page.
+      await dispatchEvent({
+        ownerId: userId,
+        event: "approval_failed",
+        title: `Approval execution failed: ${executed.title}`,
+        body: executed.executorError ?? undefined,
+        subjectRef: {
+          kind: "approval",
+          id: executed.id,
+          agentId: executed.agentId,
+        },
+        extra: { actionKind: executed.kind },
+      }).catch(() => undefined);
+    }
     return c.json({ approval: executed });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

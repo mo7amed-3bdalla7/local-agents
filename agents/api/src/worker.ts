@@ -19,7 +19,7 @@ import {
   type RunEvent,
   type TriggerContext,
 } from "@agents/sdk";
-import { getDb, schema } from "@agents/core";
+import { dispatchEvent, getDb, schema } from "@agents/core";
 import { loadDbAgent } from "./db-agents.js";
 import { getAgent } from "./registry.js";
 import { fireAgentPipeline } from "./triggers/agent-pipeline.js";
@@ -393,6 +393,39 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
           finishedAt,
         })
         .where(eq(schema.sessions.id, session.id));
+
+      // Notifications: fire run_succeeded / run_failed for the agent owner.
+      // File-source agents (ownerId=null) have no owner to notify; skip.
+      if (agentRow.ownerId) {
+        const ok = result.status === "success";
+        const event = ok ? "run_succeeded" : "run_failed";
+        const title = ok
+          ? `Run #${run.id} of ${agentRow.name} succeeded`
+          : `Run #${run.id} of ${agentRow.name} ${result.status}`;
+        const body = ok ? undefined : result.error ?? undefined;
+        await dispatchEvent({
+          ownerId: agentRow.ownerId,
+          event,
+          title,
+          body,
+          subjectRef: {
+            kind: "run",
+            id: run.id,
+            agentId: run.agentId,
+            agentName: agentRow.name,
+            sessionId: session.id,
+          },
+          extra: {
+            durationMs: result.durationMs,
+            status: result.status,
+          },
+        }).catch((err) =>
+          logger.warn("dispatchEvent failed for run completion", {
+            runId: run.id,
+            error: String(err),
+          }),
+        );
+      }
 
       // Pipeline triggers: any agent subscribed to this one via an
       // `{type: "agent", source: <name>}` trigger gets enqueued now,

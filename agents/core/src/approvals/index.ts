@@ -16,6 +16,7 @@
 
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "../db/client.js";
+import { dispatchEvent } from "../notifications/index.js";
 
 export type PendingAction = typeof schema.pendingActions.$inferSelect;
 export type PendingActionStatus = PendingAction["status"];
@@ -48,6 +49,25 @@ export async function enqueueAction(
       status: "pending",
     })
     .returning();
+
+  // Notify the owner that an approval is waiting. Fire-and-forget; failures
+  // are captured in notification_deliveries inside the dispatcher.
+  if (args.ownerId) {
+    await dispatchEvent({
+      ownerId: args.ownerId,
+      event: "approval_pending",
+      title: `Approval needed: ${args.title}`,
+      body: args.description ?? undefined,
+      subjectRef: {
+        kind: "approval",
+        id: row.id,
+        agentId: args.agentId,
+        sessionId: args.sessionId ?? null,
+      },
+      extra: { actionKind: args.kind },
+    }).catch(() => undefined);
+  }
+
   return row;
 }
 
