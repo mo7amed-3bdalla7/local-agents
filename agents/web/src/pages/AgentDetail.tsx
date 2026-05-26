@@ -10,6 +10,7 @@ import {
 } from "../api.ts";
 import { PageHeader } from "../components/PageHeader.tsx";
 import { StatusBadge } from "../components/StatusBadge.tsx";
+import { TriggerEditor } from "../components/TriggerEditor.tsx";
 import { ErrorBox } from "./AgentsList.tsx";
 
 const IN_FLIGHT_STATUSES = new Set(["pending", "active"]);
@@ -59,6 +60,18 @@ export function AgentDetail() {
       queryClient.removeQueries({ queryKey: ["agents"] });
       nav("/agents");
     },
+  });
+
+  // Trigger edits merge into configJson, replacing only the `triggers` field
+  // so execution / model / etc. stay intact.
+  const triggersMutation = useMutation({
+    mutationFn: (nextTriggers: unknown[]) => {
+      const current = (data?.agent.configJson ?? {}) as Record<string, unknown>;
+      const updatedConfig = { ...current, triggers: nextTriggers };
+      return api.agents.update(id, { configJson: updatedConfig });
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["agent", id] }),
   });
 
   const invalidate = () =>
@@ -186,6 +199,24 @@ export function AgentDetail() {
                 </span>
               </Link>
             ))}
+          </Section>
+
+          <Section title="Triggers">
+            <TriggerEditor
+              triggers={
+                (((agent.configJson as Record<string, unknown>)?.triggers ??
+                  []) as Parameters<typeof TriggerEditor>[0]["triggers"]) ?? []
+              }
+              editable={agent.source === "db"}
+              onChange={(next) => triggersMutation.mutate(next)}
+            />
+            {triggersMutation.error && (
+              <div className="mt-2 text-xs text-rose-300">
+                {triggersMutation.error instanceof ApiError
+                  ? triggersMutation.error.message
+                  : String(triggersMutation.error)}
+              </div>
+            )}
           </Section>
 
           <Section title="Skills">
