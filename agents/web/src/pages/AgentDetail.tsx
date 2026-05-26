@@ -52,7 +52,8 @@ export function AgentDetail() {
   const deleteMutation = useMutation({
     mutationFn: () => api.agents.remove(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      // Wipe the cached list so the next mount refetches.
+      queryClient.removeQueries({ queryKey: ["agents"] });
       nav("/agents");
     },
   });

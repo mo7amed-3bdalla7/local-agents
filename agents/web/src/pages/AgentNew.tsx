@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { api, ApiError, type CreateAgentArgs } from "../api.ts";
 import { PageHeader } from "../components/PageHeader.tsx";
@@ -24,6 +24,7 @@ const NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 export function AgentNew() {
   const nav = useNavigate();
+  const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_PROMPT);
@@ -36,7 +37,13 @@ export function AgentNew() {
 
   const create = useMutation({
     mutationFn: (args: CreateAgentArgs) => api.agents.create(args),
-    onSuccess: ({ agent }) => nav(`/agents/${agent.id}`),
+    onSuccess: ({ agent }) => {
+      // Wipe the cached list entirely so the next AgentsList mount triggers a
+      // fresh fetch. invalidateQueries/refetchQueries only fire when observers
+      // are active, and the list is unmounted while we're on /agents/new.
+      queryClient.removeQueries({ queryKey: ["agents"] });
+      nav(`/agents/${agent.id}`);
+    },
   });
 
   const nameValid = NAME_PATTERN.test(name);
