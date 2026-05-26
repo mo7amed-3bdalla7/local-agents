@@ -22,6 +22,7 @@ import {
 import { getDb, schema } from "@agents/core";
 import { loadDbAgent } from "./db-agents.js";
 import { getAgent } from "./registry.js";
+import { fireAgentPipeline } from "./triggers/agent-pipeline.js";
 
 const POLL_INTERVAL_MS = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 500);
 
@@ -363,6 +364,16 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
           finishedAt,
         })
         .where(eq(schema.sessions.id, session.id));
+
+      // Pipeline triggers: any agent subscribed to this one via an
+      // `{type: "agent", source: <name>}` trigger gets enqueued now,
+      // filtered by onSuccess/onFailure as the subscriber declared.
+      await fireAgentPipeline(agentRow.name, result).catch((err) =>
+        logger.warn("Pipeline dispatch failed", {
+          source: agentRow.name,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const finishedAt = new Date();

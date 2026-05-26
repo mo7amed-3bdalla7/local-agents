@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
+import { api } from "../api.ts";
 
 /**
  * Trigger editor — renders the current triggers list and (when editable)
@@ -43,9 +45,10 @@ type Trigger =
   | { type: "cron"; schedule: string; timezone?: string }
   | { type: "webhook"; path?: string; secret?: string; passBody?: boolean }
   | { type: "file"; patterns: string[]; ignore?: string[]; debounceMs?: number }
+  | { type: "agent"; source: string; onSuccess?: boolean; onFailure?: boolean; passResult?: boolean }
   | { type: "github"; repo: string; events: GitHubEvent[]; pollIntervalMs?: number };
 
-type NewType = "cron" | "webhook" | "file" | "github";
+type NewType = "cron" | "webhook" | "file" | "github" | "agent";
 
 export interface TriggerEditorProps {
   triggers: Trigger[];
@@ -87,7 +90,7 @@ export function TriggerEditor({ triggers, editable, onChange }: TriggerEditorPro
       {editable && !adding && (
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <span className="text-xs text-zinc-500">Add:</span>
-          {(["cron", "webhook", "file", "github"] as const).map((t) => (
+          {(["cron", "webhook", "file", "github", "agent"] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -111,6 +114,9 @@ export function TriggerEditor({ triggers, editable, onChange }: TriggerEditorPro
       )}
       {editable && adding === "github" && (
         <AddGitHub onCancel={() => setAdding(null)} onAdd={add} />
+      )}
+      {editable && adding === "agent" && (
+        <AddAgent onCancel={() => setAdding(null)} onAdd={add} />
       )}
     </div>
   );
@@ -185,6 +191,18 @@ function TriggerSummary({ trigger }: { trigger: Trigger }) {
         <div className="text-zinc-300">
           <code className="font-mono">{trigger.repo}</code>
           <span className="text-zinc-500"> · {trigger.events.join(", ")}</span>
+        </div>
+      );
+    case "agent":
+      return (
+        <div className="text-zinc-300">
+          after <code className="font-mono">{trigger.source}</code>
+          {trigger.onSuccess && <span className="text-emerald-300"> · on success</span>}
+          {trigger.onFailure && <span className="text-rose-300"> · on failure</span>}
+          {!trigger.onSuccess && !trigger.onFailure && (
+            <span className="text-zinc-500"> · any outcome</span>
+          )}
+          {trigger.passResult && <span className="text-zinc-500"> · pass result</span>}
         </div>
       );
   }
@@ -494,6 +512,91 @@ function AddGitHub({
           className={inputCls}
         />
       </label>
+    </FormShell>
+  );
+}
+
+function AddAgent({
+  onCancel,
+  onAdd,
+}: {
+  onCancel: () => void;
+  onAdd: (t: Trigger) => void;
+}) {
+  const agentsQuery = useQuery({
+    queryKey: ["agents"],
+    queryFn: api.agents.list,
+  });
+  const [source, setSource] = useState("");
+  const [onSuccess, setOnSuccess] = useState(false);
+  const [onFailure, setOnFailure] = useState(false);
+  const [passResult, setPassResult] = useState(true);
+  const ready = source.trim().length > 0;
+
+  return (
+    <FormShell
+      type="agent"
+      onCancel={onCancel}
+      ready={ready}
+      onSubmit={() =>
+        onAdd({
+          type: "agent",
+          source: source.trim(),
+          ...(onSuccess ? { onSuccess: true } : {}),
+          ...(onFailure ? { onFailure: true } : {}),
+          ...(passResult ? { passResult: true } : {}),
+        })
+      }
+    >
+      <label className="block text-xs">
+        <div className="mb-1 text-zinc-500">Upstream agent</div>
+        <select
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          className={inputCls}
+        >
+          <option value="">-- pick one --</option>
+          {(agentsQuery.data?.agents ?? []).map((a) => (
+            <option key={a.id} value={a.name}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <label className="flex cursor-pointer items-center gap-2 text-zinc-300">
+          <input
+            type="checkbox"
+            className="size-3 cursor-pointer accent-emerald-500"
+            checked={onSuccess}
+            onChange={(e) => setOnSuccess(e.target.checked)}
+          />
+          Only on success
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 text-zinc-300">
+          <input
+            type="checkbox"
+            className="size-3 cursor-pointer accent-rose-500"
+            checked={onFailure}
+            onChange={(e) => setOnFailure(e.target.checked)}
+          />
+          Only on failure
+        </label>
+      </div>
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-300">
+        <input
+          type="checkbox"
+          className="size-3 cursor-pointer accent-emerald-500"
+          checked={passResult}
+          onChange={(e) => setPassResult(e.target.checked)}
+        />
+        Pass upstream result into trigger context
+      </label>
+      {onSuccess && onFailure && (
+        <div className="text-[11px] text-amber-300">
+          both checked = never fires; uncheck both for "any outcome"
+        </div>
+      )}
     </FormShell>
   );
 }

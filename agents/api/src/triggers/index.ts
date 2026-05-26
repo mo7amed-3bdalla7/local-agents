@@ -13,6 +13,7 @@ import { eq } from "drizzle-orm";
 import {
   logger,
   type AgentConfig,
+  type AgentTrigger,
   type CronTrigger,
   type FileTrigger,
   type GitHubTrigger,
@@ -28,6 +29,10 @@ import {
 } from "./webhook.js";
 import { registerFileTriggers, stopAllFileWatchers } from "./file.js";
 import { registerGitHubTriggers, stopAllGitHubPollers } from "./github.js";
+import {
+  registerAgentPipelineTriggers,
+  clearAgentPipelineEdges,
+} from "./agent-pipeline.js";
 
 export interface TriggersHandle {
   stop: () => Promise<void>;
@@ -54,6 +59,10 @@ function isFile(t: Trigger): t is FileTrigger {
 
 function isGitHub(t: Trigger): t is GitHubTrigger {
   return t.type === "github";
+}
+
+function isAgent(t: Trigger): t is AgentTrigger {
+  return t.type === "agent";
 }
 
 interface CollectedAgent {
@@ -110,12 +119,18 @@ export async function registerAllTriggers(): Promise<TriggersHandle> {
     .filter((a) => a.triggers.length > 0);
   const githubCount = registerGitHubTriggers(githubAgents);
 
+  const pipelineAgents = agents
+    .map((a) => ({ name: a.name, triggers: a.triggers.filter(isAgent) }))
+    .filter((a) => a.triggers.length > 0);
+  const pipelineCount = registerAgentPipelineTriggers(pipelineAgents);
+
   logger.info("Triggers registered", {
     agents: agents.length,
     cronCount,
     webhookCount,
     fileCount,
     githubCount,
+    pipelineCount,
   });
 
   const handle: TriggersHandle = {
@@ -124,6 +139,7 @@ export async function registerAllTriggers(): Promise<TriggersHandle> {
       clearWebhookRoutes();
       await stopAllFileWatchers();
       stopAllGitHubPollers();
+      clearAgentPipelineEdges();
     },
   };
   currentHandle = handle;
