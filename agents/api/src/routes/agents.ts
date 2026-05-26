@@ -1,9 +1,24 @@
 import { Hono, type Context } from "hono";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { logger } from "@agents/sdk";
 import { getDb, schema } from "@agents/core";
 import { isUuid } from "../util.js";
+import { currentUserId } from "../auth-util.js";
 import { reloadAllTriggers } from "../triggers/index.js";
+
+/**
+ * Ownership policy on agents:
+ *   - file-source agents (ownerId IS NULL) are shared baseline — visible to
+ *     everyone, read-only via the API regardless of who you are.
+ *   - db-source agents (ownerId = some user) are private to that user.
+ *
+ * For list endpoints this becomes `WHERE ownerId IS NULL OR ownerId = me`.
+ * For mutating endpoints we additionally check the row's ownerId matches
+ * the caller after the file-source-readonly guard runs.
+ */
+function visibleToUser(userId: string) {
+  return or(isNull(schema.agents.ownerId), eq(schema.agents.ownerId, userId));
+}
 
 /**
  * Fire-and-forget trigger reload after agent CRUD so a freshly created /
@@ -21,15 +36,26 @@ function reloadTriggersInBackground(reason: string): void {
 
 export const agentsRouter = new Hono();
 
-/** Look up the agent row and return 400/404 in a uniform shape. */
-async function loadAgent(id: string) {
+/**
+ * Look up the agent row + check visibility. 404s on non-existent OR not-
+ * visible (treating "you can't see this" identically to "doesn't exist" so
+ * we don't leak other users' agent ids by probing).
+ */
+async function loadAgent(c: Context, id: string) {
   if (!isUuid(id)) {
     return { error: { status: 400 as const, body: { error: "invalid_id", message: "id must be a UUID" } } };
   }
+  const userId = currentUserId(c);
   const [agent] = await getDb()
-    .select({ id: schema.agents.id, name: schema.agents.name, enabled: schema.agents.enabled })
+    .select({
+      id: schema.agents.id,
+      name: schema.agents.name,
+      enabled: schema.agents.enabled,
+      source: schema.agents.source,
+      ownerId: schema.agents.ownerId,
+    })
     .from(schema.agents)
-    .where(eq(schema.agents.id, id))
+    .where(and(eq(schema.agents.id, id), visibleToUser(userId)))
     .limit(1);
   if (!agent) {
     return { error: { status: 404 as const, body: { error: "agent not found" } } };
@@ -94,6 +120,7 @@ agentsRouter.post("/", async (c) => {
       systemPrompt,
       configJson,
       enabled: true,
+      ownerId: currentUserId(c),
     })
     .returning();
   reloadTriggersInBackground(`agent created: ${row.name}`);
@@ -114,10 +141,11 @@ agentsRouter.patch("/:id", async (c) => {
   }
 
   const db = getDb();
+  const userId = currentUserId(c);
   const [existing] = await db
     .select()
     .from(schema.agents)
-    .where(eq(schema.agents.id, id))
+    .where(and(eq(schema.agents.id, id), visibleToUser(userId)))
     .limit(1);
   if (!existing) return c.json({ error: "agent not found" }, 404);
   if (existing.source !== "db") {
@@ -129,6 +157,9 @@ agentsRouter.patch("/:id", async (c) => {
       },
       409,
     );
+  }
+  if (existing.ownerId !== userId) {
+    return c.json({ error: "forbidden", message: "not your agent" }, 403);
   }
 
   const update: Partial<typeof schema.agents.$inferInsert> = { updatedAt: new Date() };
@@ -171,10 +202,15 @@ agentsRouter.delete("/:id", async (c) => {
     return c.json({ error: "invalid_id", message: "id must be a UUID" }, 400);
   }
   const db = getDb();
+  const userId = currentUserId(c);
   const [existing] = await db
-    .select({ id: schema.agents.id, source: schema.agents.source })
+    .select({
+      id: schema.agents.id,
+      source: schema.agents.source,
+      ownerId: schema.agents.ownerId,
+    })
     .from(schema.agents)
-    .where(eq(schema.agents.id, id))
+    .where(and(eq(schema.agents.id, id), visibleToUser(userId)))
     .limit(1);
   if (!existing) return c.json({ error: "agent not found" }, 404);
   if (existing.source !== "db") {
@@ -183,6 +219,9 @@ agentsRouter.delete("/:id", async (c) => {
       409,
     );
   }
+  if (existing.ownerId !== userId) {
+    return c.json({ error: "forbidden", message: "not your agent" }, 403);
+  }
   await db.delete(schema.agents).where(eq(schema.agents.id, id));
   reloadTriggersInBackground(`agent deleted: ${id}`);
   return c.body(null, 204);
@@ -190,6 +229,7 @@ agentsRouter.delete("/:id", async (c) => {
 
 agentsRouter.get("/", async (c) => {
   const db = getDb();
+  const userId = currentUserId(c);
   const rows = await db
     .select({
       id: schema.agents.id,
@@ -200,6 +240,7 @@ agentsRouter.get("/", async (c) => {
       updatedAt: schema.agents.updatedAt,
     })
     .from(schema.agents)
+    .where(visibleToUser(userId))
     .orderBy(schema.agents.name);
   return c.json({ agents: rows });
 });
@@ -210,10 +251,11 @@ agentsRouter.get("/:id", async (c) => {
   if (!isUuid(id)) {
     return c.json({ error: "invalid_id", message: "id must be a UUID" }, 400);
   }
+  const userId = currentUserId(c);
   const [agent] = await db
     .select()
     .from(schema.agents)
-    .where(eq(schema.agents.id, id))
+    .where(and(eq(schema.agents.id, id), visibleToUser(userId)))
     .limit(1);
   if (!agent) {
     return c.json({ error: "agent not found" }, 404);
@@ -317,7 +359,7 @@ async function parseEnabled(c: Context): Promise<boolean> {
 }
 
 agentsRouter.put("/:id/skills/:skillName", async (c) => {
-  const { error, agent } = await loadAgent(c.req.param("id"));
+  const { error, agent } = await loadAgent(c, c.req.param("id"));
   if (error) return c.json(error.body, error.status);
   const skillName = c.req.param("skillName");
   const enabled = await parseEnabled(c);
@@ -341,7 +383,7 @@ agentsRouter.put("/:id/skills/:skillName", async (c) => {
 });
 
 agentsRouter.delete("/:id/skills/:skillName", async (c) => {
-  const { error, agent } = await loadAgent(c.req.param("id"));
+  const { error, agent } = await loadAgent(c, c.req.param("id"));
   if (error) return c.json(error.body, error.status);
   const skillName = c.req.param("skillName");
   const db = getDb();
@@ -357,7 +399,7 @@ agentsRouter.delete("/:id/skills/:skillName", async (c) => {
 });
 
 agentsRouter.put("/:id/connectors/:connectorId", async (c) => {
-  const { error, agent } = await loadAgent(c.req.param("id"));
+  const { error, agent } = await loadAgent(c, c.req.param("id"));
   if (error) return c.json(error.body, error.status);
   const connectorId = c.req.param("connectorId");
   if (!isUuid(connectorId)) {
@@ -384,7 +426,7 @@ agentsRouter.put("/:id/connectors/:connectorId", async (c) => {
 });
 
 agentsRouter.delete("/:id/connectors/:connectorId", async (c) => {
-  const { error, agent } = await loadAgent(c.req.param("id"));
+  const { error, agent } = await loadAgent(c, c.req.param("id"));
   if (error) return c.json(error.body, error.status);
   const connectorId = c.req.param("connectorId");
   if (!isUuid(connectorId)) {
@@ -403,7 +445,7 @@ agentsRouter.delete("/:id/connectors/:connectorId", async (c) => {
 });
 
 agentsRouter.put("/:id/mcp-servers/:mcpServerId", async (c) => {
-  const { error, agent } = await loadAgent(c.req.param("id"));
+  const { error, agent } = await loadAgent(c, c.req.param("id"));
   if (error) return c.json(error.body, error.status);
   const mcpServerId = c.req.param("mcpServerId");
   if (!isUuid(mcpServerId)) {
@@ -430,7 +472,7 @@ agentsRouter.put("/:id/mcp-servers/:mcpServerId", async (c) => {
 });
 
 agentsRouter.delete("/:id/mcp-servers/:mcpServerId", async (c) => {
-  const { error, agent } = await loadAgent(c.req.param("id"));
+  const { error, agent } = await loadAgent(c, c.req.param("id"));
   if (error) return c.json(error.body, error.status);
   const mcpServerId = c.req.param("mcpServerId");
   if (!isUuid(mcpServerId)) {
@@ -455,6 +497,7 @@ agentsRouter.post("/:id/run", async (c) => {
   }
 
   const db = getDb();
+  const userId = currentUserId(c);
   const [agent] = await db
     .select({
       id: schema.agents.id,
@@ -462,7 +505,7 @@ agentsRouter.post("/:id/run", async (c) => {
       enabled: schema.agents.enabled,
     })
     .from(schema.agents)
-    .where(eq(schema.agents.id, id))
+    .where(and(eq(schema.agents.id, id), visibleToUser(userId)))
     .limit(1);
 
   if (!agent) {

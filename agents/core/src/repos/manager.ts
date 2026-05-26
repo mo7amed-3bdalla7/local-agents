@@ -116,6 +116,8 @@ export interface EnsureRepoArgs {
   testCommand?: string;
   /** Existing keychain secret ref (`keytar:<service>:<account>`) — optional. */
   secretRef?: string;
+  /** User who owns this repo. Null only for legacy/orphan rows. */
+  ownerId?: string;
 }
 
 export async function ensureRepo(args: EnsureRepoArgs): Promise<Repo> {
@@ -144,6 +146,7 @@ export async function ensureRepo(args: EnsureRepoArgs): Promise<Repo> {
         testCommand: args.testCommand,
         secretRef: args.secretRef,
         autoModes: {},
+        ownerId: args.ownerId,
       })
       .returning();
     return row;

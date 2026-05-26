@@ -26,6 +26,8 @@ export interface AddConnectorArgs {
   configJson: Record<string, unknown>;
   /** Raw secret value. Stored in OS keychain; only the ref lives in the DB. */
   secret?: string;
+  /** User who owns this connector. Null only for legacy/orphan rows. */
+  ownerId?: string;
 }
 
 export async function addConnector(args: AddConnectorArgs): Promise<ConnectorRow> {
@@ -48,6 +50,7 @@ export async function addConnector(args: AddConnectorArgs): Promise<ConnectorRow
       configJson: args.configJson,
       secretRef,
       enabled: true,
+      ownerId: args.ownerId,
     })
     .returning();
   return row;

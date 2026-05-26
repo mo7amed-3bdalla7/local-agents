@@ -22,6 +22,7 @@ import {
   type McpTransport,
 } from "@agents/core";
 import { isUuid } from "../util.js";
+import { currentUserId } from "../auth-util.js";
 import { abortRun } from "../worker.js";
 
 // ---------------------------------------------------------------------------
@@ -34,6 +35,7 @@ connectorsRouter.get("/", async (c) => {
   const rows = await getDb()
     .select()
     .from(schema.connectors)
+    .where(eq(schema.connectors.ownerId, currentUserId(c)))
     .orderBy(schema.connectors.displayName);
   return c.json({ connectors: rows });
 });
@@ -63,6 +65,7 @@ connectorsRouter.post("/", async (c) => {
       displayName,
       configJson: cfg,
       secret,
+      ownerId: currentUserId(c),
     });
     return c.json({ connector: row }, 201);
   } catch (err) {
@@ -76,6 +79,17 @@ connectorsRouter.post("/", async (c) => {
 connectorsRouter.delete("/:id", async (c) => {
   const id = c.req.param("id");
   if (!isUuid(id)) return c.json({ error: "invalid_id" }, 400);
+  // Verify ownership before delegating — removeConnector also wipes the
+  // keychain entry, which we don't want to do for someone else's row.
+  const [row] = await getDb()
+    .select({ ownerId: schema.connectors.ownerId })
+    .from(schema.connectors)
+    .where(eq(schema.connectors.id, id))
+    .limit(1);
+  if (!row) return c.json({ error: "connector not found" }, 404);
+  if (row.ownerId !== currentUserId(c)) {
+    return c.json({ error: "connector not found" }, 404);
+  }
   const ok = await removeConnector(id);
   if (!ok) return c.json({ error: "connector not found" }, 404);
   return c.body(null, 204);
@@ -84,6 +98,14 @@ connectorsRouter.delete("/:id", async (c) => {
 connectorsRouter.post("/:id/test", async (c) => {
   const id = c.req.param("id");
   if (!isUuid(id)) return c.json({ error: "invalid_id" }, 400);
+  const [row] = await getDb()
+    .select({ ownerId: schema.connectors.ownerId })
+    .from(schema.connectors)
+    .where(eq(schema.connectors.id, id))
+    .limit(1);
+  if (!row || row.ownerId !== currentUserId(c)) {
+    return c.json({ error: "connector not found" }, 404);
+  }
   const result = await testConnector(id);
   return c.json(result, result.ok ? 200 : 400);
 });
@@ -113,6 +135,7 @@ mcpRouter.get("/", async (c) => {
   const rows = await getDb()
     .select()
     .from(schema.mcpServers)
+    .where(eq(schema.mcpServers.ownerId, currentUserId(c)))
     .orderBy(schema.mcpServers.name);
   return c.json({ mcpServers: rows });
 });
@@ -143,6 +166,7 @@ mcpRouter.post("/", async (c) => {
       name,
       transport,
       configJson: cfg as unknown as Parameters<typeof addMcpServer>[0]["configJson"],
+      ownerId: currentUserId(c),
     });
     return c.json({ mcpServer: row }, 201);
   } catch (err) {
@@ -159,7 +183,12 @@ mcpRouter.delete("/:id", async (c) => {
   const db = getDb();
   const deleted = await db
     .delete(schema.mcpServers)
-    .where(eq(schema.mcpServers.id, id))
+    .where(
+      and(
+        eq(schema.mcpServers.id, id),
+        eq(schema.mcpServers.ownerId, currentUserId(c)),
+      ),
+    )
     .returning({ id: schema.mcpServers.id });
   if (deleted.length === 0) return c.json({ error: "mcp server not found" }, 404);
   return c.body(null, 204);
@@ -172,7 +201,12 @@ mcpRouter.post("/:id/test", async (c) => {
   const [row] = await db
     .select({ name: schema.mcpServers.name })
     .from(schema.mcpServers)
-    .where(eq(schema.mcpServers.id, id))
+    .where(
+      and(
+        eq(schema.mcpServers.id, id),
+        eq(schema.mcpServers.ownerId, currentUserId(c)),
+      ),
+    )
     .limit(1);
   if (!row) return c.json({ error: "mcp server not found" }, 404);
   const result = await testMcpServer(row.name);
@@ -189,6 +223,7 @@ reposRouter.get("/", async (c) => {
   const rows = await getDb()
     .select()
     .from(schema.repos)
+    .where(eq(schema.repos.ownerId, currentUserId(c)))
     .orderBy(schema.repos.githubFullName);
   return c.json({ repos: rows });
 });
@@ -219,7 +254,12 @@ reposRouter.post("/", async (c) => {
   try {
     // Note: ensureRepo() runs `git clone` if missing — can be slow on a fresh
     // repo. UI should show a loading spinner.
-    const row = await ensureRepo({ githubFullName, defaultBranch, testCommand });
+    const row = await ensureRepo({
+      githubFullName,
+      defaultBranch,
+      testCommand,
+      ownerId: currentUserId(c),
+    });
     return c.json({ repo: row }, 201);
   } catch (err) {
     return c.json(
@@ -236,7 +276,9 @@ reposRouter.delete("/:id", async (c) => {
   // We don't rm the local clone — the user may want it. Just drop the row.
   const deleted = await db
     .delete(schema.repos)
-    .where(eq(schema.repos.id, id))
+    .where(
+      and(eq(schema.repos.id, id), eq(schema.repos.ownerId, currentUserId(c))),
+    )
     .returning({ id: schema.repos.id });
   if (deleted.length === 0) return c.json({ error: "repo not found" }, 404);
   return c.body(null, 204);

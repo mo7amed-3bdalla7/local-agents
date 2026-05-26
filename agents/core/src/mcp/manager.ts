@@ -33,6 +33,8 @@ export interface AddMcpServerArgs {
   configJson: McpConfig;
   /** Optional keychain ref — secrets-per-env-value lands in a later slice. */
   secretRef?: string;
+  /** User who owns this server. Null only for legacy/orphan rows. */
+  ownerId?: string;
 }
 
 export async function addMcpServer(args: AddMcpServerArgs): Promise<McpServerRow> {
@@ -45,6 +47,7 @@ export async function addMcpServer(args: AddMcpServerArgs): Promise<McpServerRow
       configJson: args.configJson,
       secretRef: args.secretRef,
       enabled: true,
+      ownerId: args.ownerId,
     })
     .returning();
   return row;
