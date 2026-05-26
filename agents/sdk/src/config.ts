@@ -124,6 +124,19 @@ export interface ExecutionConfig {
 
 export type RunStatus = "success" | "failure" | "timeout" | "aborted";
 
+/**
+ * Token + cost accounting captured from the SDK's final result message.
+ * All fields are optional — older SDK responses or runs that crashed before
+ * producing a result message won't have any of these populated.
+ */
+export interface RunUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
+  totalCostUsd?: number;
+}
+
 export interface RunResult {
   agentName: string;
   status: RunStatus;
@@ -133,6 +146,7 @@ export interface RunResult {
   durationMs: number;
   output?: string;
   error?: string;
+  usage?: RunUsage;
 }
 
 // ---------------------------------------------------------------------------

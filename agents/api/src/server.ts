@@ -27,6 +27,7 @@ import {
   reposRouter,
   runsRouter,
   skillsRouter,
+  usageRouter,
 } from "./routes/registries.js";
 import { syncFileAgents } from "./sync.js";
 import { syncSkills } from "./skills/sync.js";
@@ -85,6 +86,7 @@ export function createApp(): Hono {
   api.route("/mcp-servers", mcpRouter);
   api.route("/repos", reposRouter);
   api.route("/pr-activity", prActivityRouter);
+  api.route("/usage", usageRouter);
   app.route("/api", api);
 
   app.onError((err, c) => {

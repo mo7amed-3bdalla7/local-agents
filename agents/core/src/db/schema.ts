@@ -15,6 +15,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -164,6 +165,13 @@ export const runs = pgTable(
     durationMs: integer("duration_ms"),
     output: text("output"),
     error: text("error"),
+    /** Captured from the SDK's final result message — null until populated. */
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    cacheCreationTokens: integer("cache_creation_tokens"),
+    cacheReadTokens: integer("cache_read_tokens"),
+    /** USD, 6 decimal places — small per-run amounts can compound to dollars. */
+    costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
   },
   (t) => ({
     agentStatusIdx: index("runs_agent_status_idx").on(t.agentId, t.status),

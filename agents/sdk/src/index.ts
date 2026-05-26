@@ -23,6 +23,7 @@ export type {
   RunEventKind,
   RunResult,
   RunStatus,
+  RunUsage,
   Trigger,
   TriggerContext,
   WebhookTrigger,

@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import {
   Activity,
+  BarChart3,
   Boxes,
   Bot,
   FolderGit2,
@@ -25,6 +26,7 @@ const NAV: NavItem[] = [
   { to: "/mcp-servers", label: "MCP servers", icon: Wrench, end: false },
   { to: "/repos", label: "Repos", icon: FolderGit2, end: false },
   { to: "/pr-activity", label: "PR activity", icon: GitPullRequest, end: false },
+  { to: "/usage", label: "Usage", icon: BarChart3, end: false },
 ];
 
 export function Layout() {

@@ -17,6 +17,7 @@ import type {
   RunEvent,
   RunResult,
   RunStatus,
+  RunUsage,
   TriggerContext,
 } from "./config.js";
 import { logger } from "./logger.js";
@@ -290,6 +291,7 @@ async function executeAgentCore(
         queryOptions.skills = skills;
       }
 
+      let usage: RunUsage | undefined;
       const result = await Promise.race([
         (async () => {
           for await (const message of query({
@@ -307,13 +309,51 @@ async function executeAgentCore(
               ts: new Date().toISOString(),
             });
 
+            // Intercept the SDK's final result message to capture token + cost
+            // accounting. Shape is { type:"result", total_cost_usd, usage:
+            // { input_tokens, output_tokens, cache_creation_input_tokens,
+            //   cache_read_input_tokens } }. All fields optional — we copy
+            // whatever's present.
+            if (
+              message &&
+              typeof message === "object" &&
+              (message as { type?: unknown }).type === "result"
+            ) {
+              const m = message as {
+                total_cost_usd?: unknown;
+                usage?: {
+                  input_tokens?: unknown;
+                  output_tokens?: unknown;
+                  cache_creation_input_tokens?: unknown;
+                  cache_read_input_tokens?: unknown;
+                };
+              };
+              usage = {
+                ...(typeof m.total_cost_usd === "number"
+                  ? { totalCostUsd: m.total_cost_usd }
+                  : {}),
+                ...(typeof m.usage?.input_tokens === "number"
+                  ? { inputTokens: m.usage.input_tokens }
+                  : {}),
+                ...(typeof m.usage?.output_tokens === "number"
+                  ? { outputTokens: m.usage.output_tokens }
+                  : {}),
+                ...(typeof m.usage?.cache_creation_input_tokens === "number"
+                  ? { cacheCreationTokens: m.usage.cache_creation_input_tokens }
+                  : {}),
+                ...(typeof m.usage?.cache_read_input_tokens === "number"
+                  ? { cacheReadTokens: m.usage.cache_read_input_tokens }
+                  : {}),
+              };
+            }
+
             if (typeof message === "string") {
               output += message;
             } else if (message && typeof message === "object" && "content" in message) {
               output += String((message as { content: unknown }).content);
             }
           }
-          return { status: "success" as const, output };
+          return { status: "success" as const, output, usage };
         })(),
         timeoutPromise(timeoutMs),
       ]);
@@ -340,6 +380,8 @@ async function executeAgentCore(
         start,
         "success",
         result.output,
+        undefined,
+        result.usage,
       );
       log.write(`\n${"=".repeat(72)}\n`);
       logLine(log, `Run finished — status: ${finalResult.status}, duration: ${finalResult.durationMs}ms`);
@@ -413,6 +455,7 @@ function buildResult(
   status: RunStatus,
   output?: string,
   error?: string,
+  usage?: RunUsage,
 ): RunResult {
   const finishedAt = new Date().toISOString();
   return {
@@ -424,6 +467,7 @@ function buildResult(
     durationMs: Date.now() - startMs,
     output,
     error,
+    usage,
   };
 }
 

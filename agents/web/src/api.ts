@@ -153,7 +153,44 @@ export const api = {
     remove: (id: string) =>
       request<unknown>(`/repos/${id}`, { method: "DELETE" }),
   },
+  usage: {
+    get: (days?: number) =>
+      request<Usage>(`/usage${days != null ? `?days=${days}` : ""}`),
+  },
 };
+
+export interface Usage {
+  windowDays: number;
+  since: string;
+  totals: {
+    runs: number;
+    successes: number;
+    failures: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    costUsd: number;
+  };
+  perAgent: Array<{
+    agentId: string;
+    agentName: string | null;
+    runs: number;
+    successes: number;
+    failures: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheCreationTokens: number;
+    cacheReadTokens: number;
+    costUsd: string;
+  }>;
+  perDay: Array<{
+    day: string;
+    runs: number;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: string;
+  }>;
+}
 
 export interface CreateRepoArgs {
   githubFullName: string;

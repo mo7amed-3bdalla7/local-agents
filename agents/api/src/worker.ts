@@ -346,6 +346,7 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
       });
 
       const finishedAt = new Date(result.finishedAt);
+      const u = result.usage;
       await db
         .update(schema.runs)
         .set({
@@ -354,6 +355,13 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
           durationMs: result.durationMs,
           output: result.output ?? null,
           error: result.error ?? null,
+          inputTokens: u?.inputTokens ?? null,
+          outputTokens: u?.outputTokens ?? null,
+          cacheCreationTokens: u?.cacheCreationTokens ?? null,
+          cacheReadTokens: u?.cacheReadTokens ?? null,
+          // costUsd is a numeric column — drizzle expects a string for
+          // postgres-js's numeric handling. null otherwise.
+          costUsd: u?.totalCostUsd != null ? String(u.totalCostUsd) : null,
         })
         .where(eq(schema.runs.id, run.id));
 

@@ -9,7 +9,7 @@
  */
 
 import { Hono } from "hono";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   addConnector,
   addMcpServer,
@@ -348,4 +348,72 @@ runsRouter.get("/", async (c) => {
     ? await query.where(eq(schema.runs.agentId, agentId))
     : await query;
   return c.json({ runs: rows });
+});
+
+// ---------------------------------------------------------------------------
+// Usage rollups — cost + tokens by agent and by day
+// ---------------------------------------------------------------------------
+
+export const usageRouter = new Hono();
+
+usageRouter.get("/", async (c) => {
+  const daysParam = Number(c.req.query("days") ?? "30");
+  const days = Number.isFinite(daysParam)
+    ? Math.min(Math.max(daysParam, 1), 365)
+    : 30;
+  const since = new Date(Date.now() - days * 86_400_000);
+  const db = getDb();
+
+  // Per-agent totals over the window.
+  const perAgent = await db
+    .select({
+      agentId: schema.runs.agentId,
+      agentName: schema.agents.name,
+      runs: sql<number>`COUNT(*)::int`,
+      successes: sql<number>`COUNT(*) FILTER (WHERE ${schema.runs.status} = 'success')::int`,
+      failures: sql<number>`COUNT(*) FILTER (WHERE ${schema.runs.status} IN ('failure','timeout','aborted'))::int`,
+      inputTokens: sql<number>`COALESCE(SUM(${schema.runs.inputTokens}), 0)::int`,
+      outputTokens: sql<number>`COALESCE(SUM(${schema.runs.outputTokens}), 0)::int`,
+      cacheCreationTokens: sql<number>`COALESCE(SUM(${schema.runs.cacheCreationTokens}), 0)::int`,
+      cacheReadTokens: sql<number>`COALESCE(SUM(${schema.runs.cacheReadTokens}), 0)::int`,
+      costUsd: sql<string>`COALESCE(SUM(${schema.runs.costUsd}), 0)::text`,
+    })
+    .from(schema.runs)
+    .leftJoin(schema.agents, eq(schema.runs.agentId, schema.agents.id))
+    .where(gte(schema.runs.createdAt, since))
+    .groupBy(schema.runs.agentId, schema.agents.name)
+    .orderBy(desc(sql`COALESCE(SUM(${schema.runs.costUsd}), 0)`));
+
+  // Per-day totals across all agents.
+  const perDay = await db
+    .select({
+      day: sql<string>`DATE(${schema.runs.createdAt})::text`,
+      runs: sql<number>`COUNT(*)::int`,
+      inputTokens: sql<number>`COALESCE(SUM(${schema.runs.inputTokens}), 0)::int`,
+      outputTokens: sql<number>`COALESCE(SUM(${schema.runs.outputTokens}), 0)::int`,
+      costUsd: sql<string>`COALESCE(SUM(${schema.runs.costUsd}), 0)::text`,
+    })
+    .from(schema.runs)
+    .where(gte(schema.runs.createdAt, since))
+    .groupBy(sql`DATE(${schema.runs.createdAt})`)
+    .orderBy(desc(sql`DATE(${schema.runs.createdAt})`));
+
+  // Window totals (cheap rollup over the per-agent rows).
+  const totals = {
+    runs: perAgent.reduce((s, r) => s + Number(r.runs), 0),
+    successes: perAgent.reduce((s, r) => s + Number(r.successes), 0),
+    failures: perAgent.reduce((s, r) => s + Number(r.failures), 0),
+    inputTokens: perAgent.reduce((s, r) => s + Number(r.inputTokens), 0),
+    outputTokens: perAgent.reduce((s, r) => s + Number(r.outputTokens), 0),
+    cacheReadTokens: perAgent.reduce((s, r) => s + Number(r.cacheReadTokens), 0),
+    costUsd: perAgent.reduce((s, r) => s + Number(r.costUsd), 0),
+  };
+
+  return c.json({
+    windowDays: days,
+    since: since.toISOString(),
+    totals,
+    perAgent,
+    perDay,
+  });
 });
