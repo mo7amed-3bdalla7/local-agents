@@ -64,3 +64,20 @@ export {
   type SseConfig,
   type StdioConfig,
 } from "./mcp/manager.js";
+
+export {
+  bootstrapDefaultUser,
+  countUsers,
+  createSession,
+  createUser,
+  deleteSession,
+  getUserByEmail,
+  getUserById,
+  hashPassword,
+  pruneExpiredSessions,
+  validateSession,
+  verifyPassword,
+  type AuthSession,
+  type CreateUserArgs,
+  type User,
+} from "./auth/index.js";

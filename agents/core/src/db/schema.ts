@@ -77,11 +77,49 @@ export const prActivityStatus = pgEnum("pr_activity_status", [
 ]);
 
 // ---------------------------------------------------------------------------
+// Users + auth sessions — slice-8 multi-tenancy
+// ---------------------------------------------------------------------------
+
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull().unique(),
+  /** scrypt hash. Format: `scrypt:N:r:p:<saltBase64>:<hashBase64>`. */
+  passwordHash: text("password_hash").notNull(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    /** Opaque session id — what lives in the cookie. */
+    id: text("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    userIdx: index("auth_sessions_user_idx").on(t.userId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // Agents — both file-discovered and UI-created agents land here
 // ---------------------------------------------------------------------------
 
 export const agents = pgTable("agents", {
   id: uuid("id").primaryKey().defaultRandom(),
+  /** Owner — null for file-source agents (system-owned), set for db-source. */
+  ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull().unique(),
   description: text("description").notNull(),
   source: agentSource("source").notNull(),
@@ -185,6 +223,7 @@ export const runs = pgTable(
 
 export const connectors = pgTable("connectors", {
   id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }),
   /** Connector module id: 'jira' | 'github' | 'slack' | 'whatsapp' | ... */
   connectorType: text("connector_type").notNull(),
   displayName: text("display_name").notNull(),
@@ -257,6 +296,7 @@ export const agentSkills = pgTable(
 
 export const mcpServers = pgTable("mcp_servers", {
   id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull().unique(),
   transport: mcpTransport("transport").notNull(),
   /** stdio: { command, args, env } | http/sse: { url, headers }. Env values can be {ref: secretId}. */
@@ -295,6 +335,7 @@ export const agentMcpServers = pgTable(
 
 export const repos = pgTable("repos", {
   id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }),
   githubFullName: text("github_full_name").notNull().unique(),
   localPath: text("local_path").notNull(),
   defaultBranch: text("default_branch").notNull().default("main"),
@@ -341,6 +382,7 @@ export const worktrees = pgTable(
 
 export const secrets = pgTable("secrets", {
   id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }),
   /** Logical key, e.g. 'github-pat:owner/repo' or 'jira-token:my-cloud'. */
   key: text("key").notNull().unique(),
   /** Backend pointer: 'keytar:<service>:<account>' or 'age:<filepath>'. */

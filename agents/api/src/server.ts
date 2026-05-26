@@ -15,9 +15,16 @@ import { resolve } from "node:path";
 import { getRequestListener } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { getCookie } from "hono/cookie";
 import { logger as honoLogger } from "hono/logger";
 import { logger } from "@agents/sdk";
-import { closeDb } from "@agents/core";
+import {
+  bootstrapDefaultUser,
+  closeDb,
+  validateSession,
+  type User,
+} from "@agents/core";
+import { authRouter, COOKIE_NAME } from "./routes/auth.js";
 import { agentsRouter } from "./routes/agents.js";
 import { sessionsRouter } from "./routes/sessions.js";
 import {
@@ -47,8 +54,22 @@ try {
 
 const PORT = Number(process.env.API_PORT ?? 3848);
 
-export function createApp(): Hono {
-  const app = new Hono();
+/**
+ * Routes that don't require auth. /healthz so health checks work without a
+ * cookie; /auth/* so users can sign in.
+ */
+const PUBLIC_PATHS = new Set(["/api/healthz"]);
+function isPublicPath(path: string): boolean {
+  if (PUBLIC_PATHS.has(path)) return true;
+  if (path === "/api/auth" || path.startsWith("/api/auth/")) return true;
+  return false;
+}
+
+/** Hono context variables keyed by name — see c.get("user") downstream. */
+export type AppVariables = { user: User };
+
+export function createApp(): Hono<{ Variables: AppVariables }> {
+  const app = new Hono<{ Variables: AppVariables }>();
 
   app.use("*", honoLogger());
   app.use(
@@ -61,8 +82,28 @@ export function createApp(): Hono {
     }),
   );
 
-  const api = new Hono();
+  const api = new Hono<{ Variables: AppVariables }>();
   api.get("/healthz", (c) => c.json({ status: "ok" }));
+  api.route("/auth", authRouter);
+
+  // Auth middleware: every /api/* request except healthz + /auth/* must
+  // carry a valid session cookie. The middleware sets `c.var.user` for
+  // downstream handlers.
+  api.use("*", async (c, next) => {
+    const path = c.req.path;
+    if (isPublicPath(path)) return next();
+
+    const sid = getCookie(c, COOKIE_NAME);
+    if (!sid) {
+      return c.json({ error: "not_authenticated" }, 401);
+    }
+    const user = await validateSession(sid);
+    if (!user) {
+      return c.json({ error: "not_authenticated" }, 401);
+    }
+    c.set("user", user);
+    return next();
+  });
 
   // Webhook triggers — `POST /api/triggers/<path>`. The path-to-agent map is
   // populated by registerAllTriggers() at boot.
@@ -100,6 +141,26 @@ export function createApp(): Hono {
 }
 
 async function main() {
+  // Bootstrap auth before anything else — creates the default admin user
+  // on first boot and claims orphan resources. Idempotent on subsequent
+  // boots (no-op if any user exists).
+  const bootstrapped = await bootstrapDefaultUser().catch((err) => {
+    logger.warn("Auth bootstrap failed", { error: String(err) });
+    return undefined;
+  });
+  if (bootstrapped) {
+    const usingDefaults =
+      !process.env.AGENTS_DEFAULT_ADMIN_PASSWORD ||
+      process.env.AGENTS_DEFAULT_ADMIN_PASSWORD === "admin";
+    logger.warn("Default admin user created", {
+      email: bootstrapped.email,
+      usingDefaultPassword: usingDefaults,
+      hint: usingDefaults
+        ? "Set AGENTS_DEFAULT_ADMIN_PASSWORD before first boot in production. Change the password via the UI now."
+        : undefined,
+    });
+  }
+
   await syncFileAgents().catch((err) =>
     logger.warn("File-agent sync failed", { error: String(err) }),
   );

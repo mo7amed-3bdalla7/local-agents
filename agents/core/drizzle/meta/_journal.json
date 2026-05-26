@@ -15,6 +15,13 @@
       "when": 1779819835269,
       "tag": "0001_rare_pete_wisdom",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779821850061,
+      "tag": "0002_neat_firebrand",
+      "breakpoints": true
     }
   ]
 }
