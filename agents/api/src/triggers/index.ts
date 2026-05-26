@@ -15,6 +15,7 @@ import {
   type AgentConfig,
   type CronTrigger,
   type FileTrigger,
+  type GitHubTrigger,
   type Trigger,
   type WebhookTrigger,
 } from "@agents/sdk";
@@ -26,6 +27,7 @@ import {
   clearWebhookRoutes,
 } from "./webhook.js";
 import { registerFileTriggers, stopAllFileWatchers } from "./file.js";
+import { registerGitHubTriggers, stopAllGitHubPollers } from "./github.js";
 
 export interface TriggersHandle {
   stop: () => Promise<void>;
@@ -41,6 +43,10 @@ function isWebhook(t: Trigger): t is WebhookTrigger {
 
 function isFile(t: Trigger): t is FileTrigger {
   return t.type === "file";
+}
+
+function isGitHub(t: Trigger): t is GitHubTrigger {
+  return t.type === "github";
 }
 
 interface CollectedAgent {
@@ -92,11 +98,17 @@ export async function registerAllTriggers(): Promise<TriggersHandle> {
     .filter((a) => a.triggers.length > 0);
   const fileCount = registerFileTriggers(fileAgents);
 
+  const githubAgents = agents
+    .map((a) => ({ name: a.name, triggers: a.triggers.filter(isGitHub) }))
+    .filter((a) => a.triggers.length > 0);
+  const githubCount = registerGitHubTriggers(githubAgents);
+
   logger.info("Triggers registered", {
     agents: agents.length,
     cronCount,
     webhookCount,
     fileCount,
+    githubCount,
   });
 
   return {
@@ -104,6 +116,7 @@ export async function registerAllTriggers(): Promise<TriggersHandle> {
       stopAllCronTasks();
       clearWebhookRoutes();
       await stopAllFileWatchers();
+      stopAllGitHubPollers();
     },
   };
 }
