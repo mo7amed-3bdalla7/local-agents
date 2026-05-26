@@ -8,6 +8,7 @@ import {
   Bot,
   FolderGit2,
   GitPullRequest,
+  KeyRound,
   LogOut,
   PlugZap,
   ShieldCheck,
@@ -33,6 +34,7 @@ const NAV: NavItem[] = [
   { to: "/pr-activity", label: "PR activity", icon: GitPullRequest, end: false },
   { to: "/approvals", label: "Approvals", icon: ShieldCheck, end: false },
   { to: "/notifications", label: "Notifications", icon: Bell, end: false },
+  { to: "/tokens", label: "API tokens", icon: KeyRound, end: false },
   { to: "/usage", label: "Usage", icon: BarChart3, end: false },
 ];
 

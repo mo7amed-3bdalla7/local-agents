@@ -179,6 +179,16 @@ export const api = {
     get: (days?: number) =>
       request<Usage>(`/usage${days != null ? `?days=${days}` : ""}`),
   },
+  tokens: {
+    list: () => request<{ tokens: ApiTokenSummary[] }>("/tokens"),
+    create: (args: CreateTokenArgs) =>
+      request<CreateTokenResponse>("/tokens", {
+        method: "POST",
+        body: JSON.stringify(args),
+      }),
+    revoke: (id: string) =>
+      request<unknown>(`/tokens/${id}`, { method: "DELETE" }),
+  },
   notifications: {
     listChannels: () =>
       request<{ channels: NotificationChannel[]; senders: string[] }>(
@@ -241,6 +251,32 @@ export const api = {
       }),
   },
 };
+
+export interface ApiTokenSummary {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface CreateTokenArgs {
+  name: string;
+  /** ISO timestamp, optional. */
+  expiresAt?: string;
+}
+
+export interface CreateTokenResponse {
+  /** Plaintext — shown once to the user, never returned again. */
+  token: string;
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  expiresAt: string | null;
+}
 
 export type NotificationEventName =
   | "run_succeeded"
