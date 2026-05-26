@@ -66,6 +66,27 @@ export {
 } from "./mcp/manager.js";
 
 export {
+  addChannel,
+  dispatchEvent,
+  getChannel,
+  listChannels,
+  listDeliveries,
+  listSenders,
+  listSubscriptions,
+  registerSender,
+  removeChannel,
+  removeSubscription,
+  setSubscription,
+  type AddChannelArgs,
+  type DispatchArgs,
+  type NotificationChannel,
+  type NotificationDelivery,
+  type NotificationEvent,
+  type NotificationSubscription,
+  type SenderFn,
+} from "./notifications/index.js";
+
+export {
   approveAction,
   enqueueAction,
   executePendingAction,

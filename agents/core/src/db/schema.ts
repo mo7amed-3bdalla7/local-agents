@@ -84,6 +84,18 @@ export const pendingActionStatus = pgEnum("pending_action_status", [
   "failed",
 ]);
 
+export const notificationEvent = pgEnum("notification_event", [
+  "run_succeeded",
+  "run_failed",
+  "approval_pending",
+  "approval_failed",
+]);
+
+export const notificationDeliveryStatus = pgEnum(
+  "notification_delivery_status",
+  ["sent", "failed"],
+);
+
 // ---------------------------------------------------------------------------
 // Users + auth sessions — slice-8 multi-tenancy
 // ---------------------------------------------------------------------------
@@ -487,5 +499,84 @@ export const prActivity = pgTable(
   (t) => ({
     repoPrIdx: index("pr_activity_repo_pr_idx").on(t.repoId, t.prNumber),
     sessionIdx: index("pr_activity_session_idx").on(t.sessionId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Notifications — per-user channels + subscriptions + delivery audit log
+//
+// Channels store *how* to send (webhook URL, slack hook, ...) per user.
+// Subscriptions wire (event -> channel) for a user, so the same channel
+// can receive multiple event types or be silenced for some. Deliveries
+// is a small audit/debug log of attempts, with the error captured on
+// failure.
+// ---------------------------------------------------------------------------
+
+export const notificationChannels = pgTable(
+  "notification_channels",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** e.g. 'console' | 'webhook' | 'slack' | 'email'. */
+    kind: text("kind").notNull(),
+    displayName: text("display_name").notNull(),
+    /** Non-secret config — URL, headers, channel name. Secrets live in keychain. */
+    configJson: jsonb("config_json").notNull(),
+    secretRef: text("secret_ref"),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    ownerIdx: index("notification_channels_owner_idx").on(t.ownerId),
+  }),
+);
+
+export const notificationSubscriptions = pgTable(
+  "notification_subscriptions",
+  {
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    event: notificationEvent("event").notNull(),
+    channelId: uuid("channel_id")
+      .notNull()
+      .references(() => notificationChannels.id, { onDelete: "cascade" }),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.ownerId, t.event, t.channelId] }),
+  }),
+);
+
+export const notificationDeliveries = pgTable(
+  "notification_deliveries",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    channelId: uuid("channel_id")
+      .notNull()
+      .references(() => notificationChannels.id, { onDelete: "cascade" }),
+    event: notificationEvent("event").notNull(),
+    /** Stable reference to the originating row (e.g. {kind:'run',id:42}). */
+    subjectRef: jsonb("subject_ref").notNull(),
+    /** What the sender produced (slack message id, http status). */
+    senderResult: jsonb("sender_result"),
+    status: notificationDeliveryStatus("status").notNull(),
+    error: text("error"),
+    sentAt: timestamp("sent_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    channelIdx: index("notification_deliveries_channel_idx").on(
+      t.channelId,
+      t.sentAt,
+    ),
   }),
 );
