@@ -14,6 +14,9 @@ const COLORS: Record<string, string> = {
   aborted: "bg-zinc-600/30 text-zinc-300 ring-zinc-500/30",
   drafted: "bg-zinc-700/40 text-zinc-300 ring-zinc-500/30",
   pending_approval: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
+  approved: "bg-blue-500/15 text-blue-300 ring-blue-500/30",
+  rejected: "bg-zinc-700/40 text-zinc-300 ring-zinc-500/30",
+  executed: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30",
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {

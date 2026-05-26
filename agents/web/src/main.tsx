@@ -17,6 +17,7 @@ import { PrActivityList } from "./pages/PrActivityList.tsx";
 import { ReposList } from "./pages/ReposList.tsx";
 import { RepoNew } from "./pages/RepoNew.tsx";
 import { UsagePage } from "./pages/UsagePage.tsx";
+import { ApprovalsList } from "./pages/ApprovalsList.tsx";
 import { LoginPage } from "./pages/LoginPage.tsx";
 import { AuthProvider } from "./auth/AuthContext.tsx";
 import { RequireAuth } from "./auth/RequireAuth.tsx";
@@ -59,6 +60,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="repos" element={<ReposList />} />
               <Route path="repos/new" element={<RepoNew />} />
               <Route path="pr-activity" element={<PrActivityList />} />
+              <Route path="approvals" element={<ApprovalsList />} />
               <Route path="usage" element={<UsagePage />} />
             </Route>
           </Routes>

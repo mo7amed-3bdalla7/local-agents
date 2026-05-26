@@ -26,6 +26,7 @@ import {
 } from "@agents/core";
 import { authRouter, COOKIE_NAME } from "./routes/auth.js";
 import { agentsRouter } from "./routes/agents.js";
+import { approvalsRouter } from "./routes/approvals.js";
 import { sessionsRouter } from "./routes/sessions.js";
 import {
   connectorsRouter,
@@ -128,6 +129,7 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
   api.route("/repos", reposRouter);
   api.route("/pr-activity", prActivityRouter);
   api.route("/usage", usageRouter);
+  api.route("/approvals", approvalsRouter);
   app.route("/api", api);
 
   app.onError((err, c) => {

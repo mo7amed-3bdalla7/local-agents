@@ -179,7 +179,50 @@ export const api = {
     get: (days?: number) =>
       request<Usage>(`/usage${days != null ? `?days=${days}` : ""}`),
   },
+  approvals: {
+    list: (statuses?: PendingActionStatus[]) => {
+      const qs = statuses && statuses.length > 0
+        ? `?status=${statuses.join(",")}`
+        : "";
+      return request<{ approvals: PendingAction[]; executors: string[] }>(
+        `/approvals${qs}`,
+      );
+    },
+    approve: (id: string) =>
+      request<{ approval: PendingAction }>(`/approvals/${id}/approve`, {
+        method: "POST",
+      }),
+    reject: (id: string) =>
+      request<{ approval: PendingAction }>(`/approvals/${id}/reject`, {
+        method: "POST",
+      }),
+  },
 };
+
+export type PendingActionStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "executed"
+  | "failed";
+
+export interface PendingAction {
+  id: string;
+  sessionId: string | null;
+  agentId: string;
+  ownerId: string | null;
+  kind: string;
+  title: string;
+  description: string | null;
+  payload: Record<string, unknown>;
+  status: PendingActionStatus;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  executedAt: string | null;
+  executorResult: Record<string, unknown> | null;
+  executorError: string | null;
+  createdAt: string;
+}
 
 export interface Usage {
   windowDays: number;
