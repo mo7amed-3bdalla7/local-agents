@@ -15,10 +15,15 @@ import {
   type AgentConfig,
   type CronTrigger,
   type Trigger,
+  type WebhookTrigger,
 } from "@agents/sdk";
 import { getDb, schema } from "@agents/core";
 import { registeredNames, getAgent } from "../registry.js";
 import { registerCronTriggers, stopAllCronTasks } from "./cron.js";
+import {
+  registerWebhookTriggers,
+  clearWebhookRoutes,
+} from "./webhook.js";
 
 export interface TriggersHandle {
   stop: () => Promise<void>;
@@ -26,6 +31,10 @@ export interface TriggersHandle {
 
 function isCron(t: Trigger): t is CronTrigger {
   return t.type === "cron";
+}
+
+function isWebhook(t: Trigger): t is WebhookTrigger {
+  return t.type === "webhook";
 }
 
 interface CollectedAgent {
@@ -67,14 +76,21 @@ export async function registerAllTriggers(): Promise<TriggersHandle> {
     .filter((a) => a.triggers.length > 0);
   const cronCount = registerCronTriggers(cronAgents);
 
+  const webhookAgents = agents
+    .map((a) => ({ name: a.name, triggers: a.triggers.filter(isWebhook) }))
+    .filter((a) => a.triggers.length > 0);
+  const webhookCount = registerWebhookTriggers(webhookAgents);
+
   logger.info("Triggers registered", {
     agents: agents.length,
     cronCount,
+    webhookCount,
   });
 
   return {
     async stop() {
       stopAllCronTasks();
+      clearWebhookRoutes();
     },
   };
 }

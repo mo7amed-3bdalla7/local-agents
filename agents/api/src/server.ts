@@ -33,6 +33,7 @@ import { syncSkills } from "./skills/sync.js";
 import { workspaceRoot } from "./paths.js";
 import { startWorker, type WorkerHandle } from "./worker.js";
 import { registerAllTriggers, type TriggersHandle } from "./triggers/index.js";
+import { dispatchWebhook } from "./triggers/webhook.js";
 
 // Load the repo-root .env (not the sub-package one) so `pnpm api` from the
 // workspace root or `pnpm --filter=@agents/api dev` from anywhere both work.
@@ -61,6 +62,21 @@ export function createApp(): Hono {
 
   const api = new Hono();
   api.get("/healthz", (c) => c.json({ status: "ok" }));
+
+  // Webhook triggers — `POST /api/triggers/<path>`. The path-to-agent map is
+  // populated by registerAllTriggers() at boot.
+  api.post("/triggers/:path", async (c) => {
+    const path = c.req.param("path");
+    const rawBody = await c.req.text();
+    const sigHeader =
+      c.req.header("X-Signature") ?? c.req.header("X-Hub-Signature-256");
+    const result = await dispatchWebhook({
+      path,
+      rawBody,
+      signatureHeader: sigHeader,
+    });
+    return c.json(result.body, result.status);
+  });
   api.route("/agents", agentsRouter);
   api.route("/sessions", sessionsRouter);
   api.route("/runs", runsRouter);
