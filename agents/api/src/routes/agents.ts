@@ -21,6 +21,151 @@ async function loadAgent(id: string) {
   return { agent };
 }
 
+const NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+agentsRouter.post("/", async (c) => {
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "invalid_body", message: "body must be JSON" }, 400);
+  }
+
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!NAME_PATTERN.test(name)) {
+    return c.json(
+      {
+        error: "invalid_name",
+        message:
+          "name must be 1-63 chars, start with a letter or digit, and contain only [a-z0-9-]",
+      },
+      400,
+    );
+  }
+  const description =
+    typeof body.description === "string" ? body.description.trim() : "";
+  if (!description) {
+    return c.json(
+      { error: "invalid_description", message: "description is required" },
+      400,
+    );
+  }
+  const systemPrompt =
+    typeof body.systemPrompt === "string" ? body.systemPrompt : null;
+  const configJson =
+    body.configJson && typeof body.configJson === "object" && !Array.isArray(body.configJson)
+      ? (body.configJson as Record<string, unknown>)
+      : {};
+
+  const db = getDb();
+  // Reject collisions early with a clean 409 instead of letting the unique
+  // constraint blow up as a 500.
+  const [existing] = await db
+    .select({ id: schema.agents.id })
+    .from(schema.agents)
+    .where(eq(schema.agents.name, name))
+    .limit(1);
+  if (existing) {
+    return c.json({ error: "name_taken", message: `agent "${name}" already exists` }, 409);
+  }
+
+  const [row] = await db
+    .insert(schema.agents)
+    .values({
+      name,
+      description,
+      source: "db",
+      systemPrompt,
+      configJson,
+      enabled: true,
+    })
+    .returning();
+  return c.json({ agent: row }, 201);
+});
+
+agentsRouter.patch("/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!isUuid(id)) {
+    return c.json({ error: "invalid_id", message: "id must be a UUID" }, 400);
+  }
+
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "invalid_body", message: "body must be JSON" }, 400);
+  }
+
+  const db = getDb();
+  const [existing] = await db
+    .select()
+    .from(schema.agents)
+    .where(eq(schema.agents.id, id))
+    .limit(1);
+  if (!existing) return c.json({ error: "agent not found" }, 404);
+  if (existing.source !== "db") {
+    return c.json(
+      {
+        error: "read_only",
+        message:
+          "file-source agents are read-only; edit the source files and rebuild",
+      },
+      409,
+    );
+  }
+
+  const update: Partial<typeof schema.agents.$inferInsert> = { updatedAt: new Date() };
+  if (typeof body.description === "string") {
+    const trimmed = body.description.trim();
+    if (!trimmed) {
+      return c.json({ error: "invalid_description" }, 400);
+    }
+    update.description = trimmed;
+  }
+  if (body.systemPrompt === null || typeof body.systemPrompt === "string") {
+    update.systemPrompt = body.systemPrompt as string | null;
+  }
+  if (
+    body.configJson &&
+    typeof body.configJson === "object" &&
+    !Array.isArray(body.configJson)
+  ) {
+    update.configJson = body.configJson as Record<string, unknown>;
+  }
+  if (typeof body.enabled === "boolean") {
+    update.enabled = body.enabled;
+  }
+
+  const [row] = await db
+    .update(schema.agents)
+    .set(update)
+    .where(eq(schema.agents.id, id))
+    .returning();
+  return c.json({ agent: row });
+});
+
+agentsRouter.delete("/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!isUuid(id)) {
+    return c.json({ error: "invalid_id", message: "id must be a UUID" }, 400);
+  }
+  const db = getDb();
+  const [existing] = await db
+    .select({ id: schema.agents.id, source: schema.agents.source })
+    .from(schema.agents)
+    .where(eq(schema.agents.id, id))
+    .limit(1);
+  if (!existing) return c.json({ error: "agent not found" }, 404);
+  if (existing.source !== "db") {
+    return c.json(
+      { error: "read_only", message: "file-source agents cannot be deleted via the API" },
+      409,
+    );
+  }
+  await db.delete(schema.agents).where(eq(schema.agents.id, id));
+  return c.body(null, 204);
+});
+
 agentsRouter.get("/", async (c) => {
   const db = getDb();
   const rows = await db

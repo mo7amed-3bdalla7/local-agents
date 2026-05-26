@@ -20,6 +20,7 @@ import {
   type TriggerContext,
 } from "@agents/sdk";
 import { getDb, schema } from "@agents/core";
+import { loadDbAgent } from "./db-agents.js";
 import { getAgent } from "./registry.js";
 
 const POLL_INTERVAL_MS = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 500);
@@ -240,11 +241,14 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
     return { runId: run.id, sessionId: "", abort, promise: Promise.resolve() };
   }
 
-  const entry = getAgent(agentRow.name);
+  // File-source agents live in the in-memory registry, populated at boot from
+  // dist/agent.config.js. DB-source agents (created in the UI) are materialized
+  // to disk on demand so the runner's filesystem assumptions still hold.
+  const entry = getAgent(agentRow.name) ?? (await loadDbAgent(agentRow.name));
   if (!entry) {
     await failRun(
       run.id,
-      `Agent "${agentRow.name}" not loaded in the worker registry (missing dist/agent.config.js?)`,
+      `Agent "${agentRow.name}" not loaded — missing dist/agent.config.js (file) or agents row (db)`,
     );
     return { runId: run.id, sessionId: "", abort, promise: Promise.resolve() };
   }
