@@ -17,7 +17,12 @@ import {
   type ConnectorRow,
   type JiraConfig,
 } from "../index.js";
-import { getIssue, JiraError, searchIssues } from "../connectors/jira/client.js";
+import {
+  getIssue,
+  JiraError,
+  postComment,
+  searchIssues,
+} from "../connectors/jira/client.js";
 import { loadWorkspaceEnv } from "./env.js";
 
 type Flags = Record<string, string | true>;
@@ -47,7 +52,8 @@ function usage(): never {
   console.error(
     "Usage:\n" +
       "  pnpm jira issue get <KEY> [--connector <uuid>]\n" +
-      "  pnpm jira issue search \"<JQL>\" [--max 25] [--connector <uuid>]",
+      "  pnpm jira issue search \"<JQL>\" [--max 25] [--connector <uuid>]\n" +
+      "  pnpm jira comment <KEY> --body \"<text>\" [--connector <uuid>]",
   );
   process.exit(2);
 }
@@ -121,6 +127,24 @@ async function cmdIssueSearch(positional: string[], flags: Flags): Promise<void>
   }
 }
 
+async function cmdComment(positional: string[], flags: Flags): Promise<void> {
+  const key = positional[0];
+  if (!key) usage();
+  const body = typeof flags.body === "string" ? flags.body : undefined;
+  if (!body) {
+    throw new Error("Missing required flag --body");
+  }
+  const deps = await resolveJiraDeps(flags);
+  const result = await postComment(deps, key, body);
+  console.log(
+    JSON.stringify(
+      { id: result.id, created: result.created, url: result.self },
+      null,
+      2,
+    ),
+  );
+}
+
 async function main(): Promise<void> {
   loadWorkspaceEnv();
   const [subcommand, ...rest] = process.argv.slice(2);
@@ -138,6 +162,9 @@ async function main(): Promise<void> {
           default:
             usage();
         }
+        break;
+      case "comment":
+        await cmdComment(positional, flags);
         break;
       default:
         usage();

@@ -119,3 +119,71 @@ export async function searchIssues(
   });
   return jiraGet<JiraSearchResult>(deps, `/rest/api/3/search/jql?${params}`);
 }
+
+async function jiraPost<T>(
+  deps: JiraDeps,
+  path: string,
+  body: unknown,
+): Promise<T> {
+  const url = `${deps.config.host.replace(/\/$/, "")}${path}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: authHeader(deps),
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let errBody: unknown = null;
+    try {
+      errBody = await res.json();
+    } catch {
+      // ignore
+    }
+    throw new JiraError(res.status, `${res.status} ${res.statusText}`, errBody);
+  }
+  return (await res.json()) as T;
+}
+
+export interface JiraComment {
+  id: string;
+  self: string;
+  body: unknown;
+  created: string;
+  updated: string;
+  author?: { accountId: string; displayName: string };
+}
+
+/**
+ * Post a comment on a Jira issue. Body is a plain string (auto-wrapped into
+ * Atlassian Document Format paragraph) — pass raw ADF via the `adfBody` arg
+ * if you need rich formatting.
+ */
+export async function postComment(
+  deps: JiraDeps,
+  issueKey: string,
+  body: string,
+  adfBody?: unknown,
+): Promise<JiraComment> {
+  const payload = adfBody
+    ? { body: adfBody }
+    : {
+        body: {
+          type: "doc",
+          version: 1,
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: body }],
+            },
+          ],
+        },
+      };
+  return jiraPost<JiraComment>(
+    deps,
+    `/rest/api/3/issue/${encodeURIComponent(issueKey)}/comment`,
+    payload,
+  );
+}
