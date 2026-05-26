@@ -125,6 +125,15 @@ export const api = {
   },
   mcp: {
     list: () => request<{ mcpServers: McpServer[] }>("/mcp-servers"),
+    create: (args: CreateMcpServerArgs) =>
+      request<{ mcpServer: McpServer }>("/mcp-servers", {
+        method: "POST",
+        body: JSON.stringify(args),
+      }),
+    remove: (id: string) =>
+      request<unknown>(`/mcp-servers/${id}`, { method: "DELETE" }),
+    test: (id: string) =>
+      request<TestResult>(`/mcp-servers/${id}/test`, { method: "POST" }),
   },
   prActivity: {
     list: () => request<{ prActivity: PrActivity[] }>("/pr-activity"),
@@ -261,6 +270,12 @@ export interface McpServer {
   enabled: boolean;
   cachedToolsJson: McpTool[] | null;
   cachedToolsFetchedAt: string | null;
+}
+
+export interface CreateMcpServerArgs {
+  name: string;
+  transport: "stdio" | "http" | "sse";
+  configJson: Record<string, unknown>;
 }
 
 export interface PrActivity {

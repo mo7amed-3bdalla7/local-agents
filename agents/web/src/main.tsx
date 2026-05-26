@@ -12,6 +12,7 @@ import { ConnectorsList } from "./pages/ConnectorsList.tsx";
 import { ConnectorNew } from "./pages/ConnectorNew.tsx";
 import { SkillsList } from "./pages/SkillsList.tsx";
 import { McpServersList } from "./pages/McpServersList.tsx";
+import { McpServerNew } from "./pages/McpServerNew.tsx";
 import { PrActivityList } from "./pages/PrActivityList.tsx";
 import { ReposList } from "./pages/ReposList.tsx";
 import "./index.css";
@@ -41,6 +42,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="connectors/new" element={<ConnectorNew />} />
             <Route path="skills" element={<SkillsList />} />
             <Route path="mcp-servers" element={<McpServersList />} />
+            <Route path="mcp-servers/new" element={<McpServerNew />} />
             <Route path="repos" element={<ReposList />} />
             <Route path="pr-activity" element={<PrActivityList />} />
           </Route>
