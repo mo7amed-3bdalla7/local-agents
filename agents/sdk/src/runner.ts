@@ -130,6 +130,14 @@ export interface ExecuteAgentOptions {
    * from the agent's attached, enabled rows in `agent_mcp_servers`.
    */
   mcpServers?: Record<string, McpServerConfig>;
+  /**
+   * Skills to load into the agent's system prompt. Names match SKILL.md
+   * frontmatter `name` (or plugin-qualified `plugin:skill`). The worker passes
+   * the agent's attached + enabled skill names; the SDK then hides every other
+   * discovered skill from the prompt. If empty/undefined the SDK default kicks
+   * in (load all discovered skills).
+   */
+  skills?: string[];
 }
 
 /**
@@ -148,6 +156,7 @@ export async function executeAgent(
     onEvent,
     extraEnv,
     mcpServers,
+    skills,
   } = opts;
   const startedAt = new Date().toISOString();
   const start = Date.now();
@@ -173,6 +182,7 @@ export async function executeAgent(
       signal,
       onEvent,
       mcpServers,
+      skills,
     );
   } finally {
     for (const key of addedEnvKeys) {
@@ -206,6 +216,7 @@ async function executeAgentCore(
   signal?: AbortSignal,
   onEvent?: ExecuteAgentOptions["onEvent"],
   mcpServers?: Record<string, McpServerConfig>,
+  skills?: string[],
 ): Promise<RunResult> {
   const log = await openRunLog(
     agentDir,
@@ -274,6 +285,9 @@ async function executeAgentCore(
       }
       if (mcpServers && Object.keys(mcpServers).length > 0) {
         queryOptions.mcpServers = mcpServers;
+      }
+      if (skills && skills.length > 0) {
+        queryOptions.skills = skills;
       }
 
       const result = await Promise.race([

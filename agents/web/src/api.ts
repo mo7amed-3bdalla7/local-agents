@@ -198,13 +198,19 @@ export interface Skill {
   enabled: boolean;
 }
 
+export interface McpTool {
+  name: string;
+  description?: string;
+  inputSchema?: unknown;
+}
+
 export interface McpServer {
   id: string;
   name: string;
   transport: "stdio" | "http" | "sse";
   configJson: Record<string, unknown>;
   enabled: boolean;
-  cachedToolsJson: unknown;
+  cachedToolsJson: McpTool[] | null;
   cachedToolsFetchedAt: string | null;
 }
 

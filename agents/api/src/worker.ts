@@ -114,6 +114,29 @@ async function recoverOrphanedRuns(): Promise<void> {
 }
 
 /**
+ * Load the names of the agent's attached + enabled skills. Passed to the SDK's
+ * `query({ skills })` option so only these skills load into the agent's system
+ * prompt; the rest of the discovered registry stays hidden.
+ */
+async function loadAttachedSkills(agentId: string): Promise<string[]> {
+  const rows = await getDb()
+    .select({ name: schema.skills.name })
+    .from(schema.agentSkills)
+    .innerJoin(
+      schema.skills,
+      eq(schema.skills.name, schema.agentSkills.skillName),
+    )
+    .where(
+      and(
+        eq(schema.agentSkills.agentId, agentId),
+        eq(schema.agentSkills.enabled, true),
+        eq(schema.skills.enabled, true),
+      ),
+    );
+  return rows.map((r) => r.name);
+}
+
+/**
  * Load the agent's attached + enabled MCP servers and translate the DB
  * config_json into the SDK's `mcpServers` shape (keyed by server name,
  * with the `type` discriminator on each entry).
@@ -262,12 +285,18 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
   const promise = (async () => {
     const startMs = Date.now();
     try {
-      const mcpServers = await loadAttachedMcpServers(run.agentId);
+      const [mcpServers, skills] = await Promise.all([
+        loadAttachedMcpServers(run.agentId),
+        loadAttachedSkills(run.agentId),
+      ]);
       if (Object.keys(mcpServers).length > 0) {
         logger.info("Injecting MCP servers into run", {
           agentId: run.agentId,
           servers: Object.keys(mcpServers),
         });
+      }
+      if (skills.length > 0) {
+        logger.info("Injecting skills into run", { agentId: run.agentId, skills });
       }
 
       const result = await executeAgent({
@@ -281,6 +310,7 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
           AGENTS_AGENT_ID: run.agentId,
         },
         mcpServers,
+        skills,
       });
 
       const finishedAt = new Date(result.finishedAt);
