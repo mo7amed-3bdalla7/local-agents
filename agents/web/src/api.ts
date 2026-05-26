@@ -110,6 +110,15 @@ export const api = {
   },
   connectors: {
     list: () => request<{ connectors: Connector[] }>("/connectors"),
+    create: (args: CreateConnectorArgs) =>
+      request<{ connector: Connector }>("/connectors", {
+        method: "POST",
+        body: JSON.stringify(args),
+      }),
+    remove: (id: string) =>
+      request<unknown>(`/connectors/${id}`, { method: "DELETE" }),
+    test: (id: string) =>
+      request<TestResult>(`/connectors/${id}/test`, { method: "POST" }),
   },
   skills: {
     list: () => request<{ skills: Skill[] }>("/skills"),
@@ -213,6 +222,20 @@ export interface Connector {
   configJson: Record<string, unknown>;
   enabled: boolean;
   createdAt: string;
+}
+
+export interface CreateConnectorArgs {
+  connectorType: string;
+  displayName: string;
+  configJson: Record<string, unknown>;
+  secret?: string;
+}
+
+export interface TestResult {
+  ok: boolean;
+  message: string;
+  data?: Record<string, unknown>;
+  toolsCount?: number;
 }
 
 export interface Skill {

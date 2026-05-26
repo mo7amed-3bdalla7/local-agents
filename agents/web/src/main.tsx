@@ -9,6 +9,7 @@ import { AgentNew } from "./pages/AgentNew.tsx";
 import { SessionsList } from "./pages/SessionsList.tsx";
 import { SessionDetail } from "./pages/SessionDetail.tsx";
 import { ConnectorsList } from "./pages/ConnectorsList.tsx";
+import { ConnectorNew } from "./pages/ConnectorNew.tsx";
 import { SkillsList } from "./pages/SkillsList.tsx";
 import { McpServersList } from "./pages/McpServersList.tsx";
 import { PrActivityList } from "./pages/PrActivityList.tsx";
@@ -37,6 +38,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="sessions" element={<SessionsList />} />
             <Route path="sessions/:id" element={<SessionDetail />} />
             <Route path="connectors" element={<ConnectorsList />} />
+            <Route path="connectors/new" element={<ConnectorNew />} />
             <Route path="skills" element={<SkillsList />} />
             <Route path="mcp-servers" element={<McpServersList />} />
             <Route path="repos" element={<ReposList />} />
