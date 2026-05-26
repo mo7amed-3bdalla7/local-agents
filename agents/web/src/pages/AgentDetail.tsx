@@ -1,6 +1,6 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Play } from "lucide-react";
+import { ArrowLeft, Play, Trash2 } from "lucide-react";
 import {
   api,
   ApiError,
@@ -16,6 +16,7 @@ const IN_FLIGHT_STATUSES = new Set(["pending", "active"]);
 
 export function AgentDetail() {
   const { id = "" } = useParams();
+  const nav = useNavigate();
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["agent", id],
@@ -48,6 +49,14 @@ export function AgentDetail() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => api.agents.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      nav("/agents");
+    },
+  });
+
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["agent", id] });
 
@@ -72,15 +81,37 @@ export function AgentDetail() {
         title={agent.name}
         description={agent.description}
         actions={
-          <button
-            type="button"
-            onClick={() => runMutation.mutate()}
-            disabled={runMutation.isPending}
-            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
-          >
-            <Play className="size-4" />
-            Run now
-          </button>
+          <div className="flex items-center gap-2">
+            {agent.source === "db" && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    confirm(
+                      `Delete agent "${agent.name}"? Sessions and runs stay; the agent row goes.`,
+                    )
+                  ) {
+                    deleteMutation.mutate();
+                  }
+                }}
+                disabled={deleteMutation.isPending}
+                className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-sm font-medium text-rose-200 hover:bg-rose-500/20 disabled:opacity-50"
+                title="Delete this db-source agent"
+              >
+                <Trash2 className="size-4" />
+                Delete
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => runMutation.mutate()}
+              disabled={runMutation.isPending}
+              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
+            >
+              <Play className="size-4" />
+              Run now
+            </button>
+          </div>
         }
       />
 

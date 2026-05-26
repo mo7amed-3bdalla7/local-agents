@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Bot, ChevronRight, FileCode2 } from "lucide-react";
+import { Bot, ChevronRight, FileCode2, Plus } from "lucide-react";
 import { api } from "../api.ts";
 import { EmptyState } from "../components/EmptyState.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
@@ -15,7 +15,15 @@ export function AgentsList() {
     <>
       <PageHeader
         title="Agents"
-        description="Configured agents (file-defined sync on api boot; UI-created agents land in a later commit)."
+        description="Configured agents — file-defined ones sync on api boot, db-defined ones are authored here."
+        actions={
+          <Link
+            to="/agents/new"
+            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/60 bg-emerald-500/20 px-3 py-1.5 text-sm font-medium text-emerald-100 hover:bg-emerald-500/30"
+          >
+            <Plus className="size-4" /> New agent
+          </Link>
+        }
       />
 
       {isLoading && <Skeleton />}

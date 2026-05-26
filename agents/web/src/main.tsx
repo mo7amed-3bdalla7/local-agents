@@ -5,6 +5,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout.tsx";
 import { AgentsList } from "./pages/AgentsList.tsx";
 import { AgentDetail } from "./pages/AgentDetail.tsx";
+import { AgentNew } from "./pages/AgentNew.tsx";
 import { SessionsList } from "./pages/SessionsList.tsx";
 import { SessionDetail } from "./pages/SessionDetail.tsx";
 import { ConnectorsList } from "./pages/ConnectorsList.tsx";
@@ -31,6 +32,7 @@ createRoot(document.getElementById("root")!).render(
           <Route element={<Layout />}>
             <Route index element={<AgentsList />} />
             <Route path="agents" element={<AgentsList />} />
+            <Route path="agents/new" element={<AgentNew />} />
             <Route path="agents/:id" element={<AgentDetail />} />
             <Route path="sessions" element={<SessionsList />} />
             <Route path="sessions/:id" element={<SessionDetail />} />

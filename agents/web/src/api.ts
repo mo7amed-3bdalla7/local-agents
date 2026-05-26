@@ -80,6 +80,18 @@ export const api = {
       request<unknown>(`/agents/${id}/mcp-servers/${mcpServerId}`, {
         method: "DELETE",
       }),
+    create: (args: CreateAgentArgs) =>
+      request<{ agent: Agent }>("/agents", {
+        method: "POST",
+        body: JSON.stringify(args),
+      }),
+    update: (id: string, args: UpdateAgentArgs) =>
+      request<{ agent: Agent }>(`/agents/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(args),
+      }),
+    remove: (id: string) =>
+      request<unknown>(`/agents/${id}`, { method: "DELETE" }),
   },
   sessions: {
     list: () => request<{ sessions: SessionSummary[] }>("/sessions"),
@@ -128,6 +140,20 @@ export interface Agent extends AgentSummary {
   systemPrompt: string | null;
   configJson: Record<string, unknown>;
   createdAt: string;
+}
+
+export interface CreateAgentArgs {
+  name: string;
+  description: string;
+  systemPrompt?: string;
+  configJson?: Record<string, unknown>;
+}
+
+export interface UpdateAgentArgs {
+  description?: string;
+  systemPrompt?: string | null;
+  configJson?: Record<string, unknown>;
+  enabled?: boolean;
 }
 
 export interface SessionSummary {
