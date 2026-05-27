@@ -120,12 +120,52 @@ export function SessionDetail() {
         </div>
       ) : (
         <ol className="space-y-2">
-          {events.map((e) => (
-            <EventCard key={e.id} event={e} />
+          {collapseHookRuns(events).map(({ event, runLength }) => (
+            <EventCard key={event.id} event={event} runLength={runLength} />
           ))}
         </ol>
       )}
     </>
   );
+}
+
+/**
+ * Collapse runs of identical hook events ("SessionStart", "PreToolUse:Read")
+ * into a single entry with a runLength count. Long-running agents emit the
+ * same hook fan-out repeatedly and it floods the timeline; one card per run
+ * with "×6" is much more legible.
+ */
+type SdkLike = {
+  type?: string;
+  subtype?: string;
+  hook_name?: string;
+  hook_event_name?: string;
+};
+
+function hookSignature(event: { kind: string; payload: unknown }): string | null {
+  if (event.kind !== "message") return null;
+  const p = event.payload as SdkLike | null;
+  if (!p || p.type !== "system") return null;
+  if (typeof p.subtype !== "string" || !p.subtype.startsWith("hook_")) return null;
+  return [p.subtype, p.hook_name ?? "", p.hook_event_name ?? ""].join("|");
+}
+
+interface CollapsedEvent {
+  event: SessionEvent;
+  runLength: number;
+}
+
+function collapseHookRuns(events: SessionEvent[]): CollapsedEvent[] {
+  const out: CollapsedEvent[] = [];
+  for (const e of events) {
+    const sig = hookSignature(e);
+    const last = out[out.length - 1];
+    if (sig && last && hookSignature(last.event) === sig) {
+      last.runLength += 1;
+      continue;
+    }
+    out.push({ event: e, runLength: 1 });
+  }
+  return out;
 }
 

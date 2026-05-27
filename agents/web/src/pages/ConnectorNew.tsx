@@ -17,7 +17,9 @@ export function ConnectorNew() {
   const [displayName, setDisplayName] = useState("");
 
   // Jira fields
-  const [host, setHost] = useState("https://");
+  // Start empty so the placeholder shows and we don't flash the
+  // "must start with http(s)://" warning before the user types anything.
+  const [host, setHost] = useState("");
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
 

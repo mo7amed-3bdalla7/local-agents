@@ -55,7 +55,14 @@ interface SdkMessage {
   hook_event?: string;
 }
 
-export function EventCard({ event }: { event: SessionEvent }) {
+export function EventCard({
+  event,
+  runLength = 1,
+}: {
+  event: SessionEvent;
+  /** Number of consecutive identical events collapsed into this card. */
+  runLength?: number;
+}) {
   // Error / mcp_call / etc. kinds — render raw with their kind tag.
   if (event.kind !== "message") {
     return <RawCard event={event} />;
@@ -64,7 +71,7 @@ export function EventCard({ event }: { event: SessionEvent }) {
   const p = (event.payload as unknown as SdkMessage) ?? {};
 
   if (p.type === "system") {
-    return <SystemCard event={event} payload={p} />;
+    return <SystemCard event={event} payload={p} runLength={runLength} />;
   }
   if (p.type === "user") {
     return <UserCard event={event} payload={p} />;
@@ -80,7 +87,15 @@ export function EventCard({ event }: { event: SessionEvent }) {
 
 // ─── System (init + hooks — usually collapsed) ─────────────────────────────
 
-function SystemCard({ event, payload }: { event: SessionEvent; payload: SdkMessage }) {
+function SystemCard({
+  event,
+  payload,
+  runLength = 1,
+}: {
+  event: SessionEvent;
+  payload: SdkMessage;
+  runLength?: number;
+}) {
   const isInit = payload.subtype === "init";
   const isHook = payload.subtype?.startsWith("hook_") ?? false;
 
@@ -111,11 +126,13 @@ function SystemCard({ event, payload }: { event: SessionEvent; payload: SdkMessa
   }
 
   if (isHook) {
+    const base = `hook · ${payload.hook_name ?? payload.subtype}`;
+    const label = runLength > 1 ? `${base} ×${runLength}` : base;
     return (
       <CollapsibleCard
         icon={<CircuitBoard className="size-3.5 text-zinc-500" />}
         tone="border-zinc-800 bg-zinc-950/30"
-        label={`hook · ${payload.hook_name ?? payload.subtype}`}
+        label={label}
         ts={event.ts}
         payload={event.payload}
       />
@@ -169,17 +186,24 @@ function AssistantBlock({ block }: { block: ContentBlock }) {
       </div>
     );
   }
-  if (block.type === "thinking" && typeof block.text === "string") {
-    return (
-      <details className="text-xs">
-        <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">
-          <Sparkles className="mr-1 inline size-3" /> thinking
-        </summary>
-        <div className="mt-1 whitespace-pre-wrap break-words text-zinc-400">
-          {block.text}
-        </div>
-      </details>
-    );
+  if (block.type === "thinking") {
+    // The SDK sends `block.thinking` (not `.text`) for thinking blocks,
+    // plus a base64 `signature` we don't want to show.
+    const body =
+      (block as { thinking?: unknown }).thinking ??
+      (block as { text?: unknown }).text;
+    if (typeof body === "string" && body) {
+      return (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">
+            <Sparkles className="mr-1 inline size-3" /> thinking
+          </summary>
+          <div className="mt-1 whitespace-pre-wrap break-words text-zinc-400">
+            {body}
+          </div>
+        </details>
+      );
+    }
   }
   return (
     <pre className="overflow-x-auto whitespace-pre-wrap break-words text-[11px] text-zinc-400">

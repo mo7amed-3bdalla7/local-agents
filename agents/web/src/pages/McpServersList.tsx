@@ -6,6 +6,7 @@ import { api, type McpServer, type McpTool, type TestResult } from "../api.ts";
 import { EmptyState } from "../components/EmptyState.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
 import { ErrorBox } from "../components/ErrorBox.tsx";
+import { StatusBadge } from "../components/StatusBadge.tsx";
 
 export function McpServersList() {
   const { data, isLoading, error } = useQuery({
@@ -124,9 +125,7 @@ function McpServerRow({ server }: { server: McpServer }) {
           >
             <Trash2 className="size-3" />
           </button>
-          <span className="ml-1 text-zinc-500">
-            {server.enabled ? "enabled" : "disabled"}
-          </span>
+          <StatusBadge status={server.enabled ? "enabled" : "disabled"} />
         </div>
       </div>
       {test && !test.ok && (
