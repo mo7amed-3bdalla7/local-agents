@@ -1,17 +1,64 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { and, asc, desc, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, type SQL } from "drizzle-orm";
 import { getDb, schema } from "@agents/core";
 import { isUuid } from "../util.js";
+import { currentUserId } from "../auth-util.js";
 
 export const sessionsRouter = new Hono();
 
+const ALL_SESSION_STATUSES = [
+  "active",
+  "completed",
+  "failed",
+  "aborted",
+  "timeout",
+] as const;
+type SessionStatus = (typeof ALL_SESSION_STATUSES)[number];
+
+function parseStatusFilter(q: string | undefined): SessionStatus[] | undefined {
+  if (!q) return undefined;
+  const parts = q.split(",").map((s) => s.trim()).filter(Boolean);
+  const valid = parts.filter((p): p is SessionStatus =>
+    (ALL_SESSION_STATUSES as readonly string[]).includes(p),
+  );
+  return valid.length > 0 ? valid : undefined;
+}
+
+function parseIsoDate(q: string | undefined): Date | undefined {
+  if (!q) return undefined;
+  const d = new Date(q);
+  return Number.isFinite(d.getTime()) ? d : undefined;
+}
+
 sessionsRouter.get("/", async (c) => {
   const db = getDb();
+  const userId = currentUserId(c);
+
   const limitParam = Number(c.req.query("limit") ?? "50");
   const limit = Number.isFinite(limitParam)
-    ? Math.min(Math.max(limitParam, 1), 200)
+    ? Math.min(Math.max(limitParam, 1), 500)
     : 50;
+
+  const statuses = parseStatusFilter(c.req.query("status"));
+  const agentId = c.req.query("agentId");
+  const since = parseIsoDate(c.req.query("since"));
+  const until = parseIsoDate(c.req.query("until"));
+
+  // Scope to sessions of agents the user can see (own db-source + all
+  // file-source). Joining agents is unavoidable for the visibility filter.
+  const whereParts: SQL[] = [
+    or(
+      isNull(schema.agents.ownerId),
+      eq(schema.agents.ownerId, userId),
+    ) as SQL,
+  ];
+  if (statuses) whereParts.push(inArray(schema.sessions.status, statuses));
+  if (agentId && isUuid(agentId)) {
+    whereParts.push(eq(schema.sessions.agentId, agentId));
+  }
+  if (since) whereParts.push(gte(schema.sessions.startedAt, since));
+  if (until) whereParts.push(lte(schema.sessions.startedAt, until));
 
   const rows = await db
     .select({
@@ -24,6 +71,7 @@ sessionsRouter.get("/", async (c) => {
     })
     .from(schema.sessions)
     .leftJoin(schema.agents, eq(schema.sessions.agentId, schema.agents.id))
+    .where(and(...whereParts))
     .orderBy(desc(schema.sessions.startedAt))
     .limit(limit);
 

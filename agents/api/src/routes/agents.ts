@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { logger } from "@agents/sdk";
 import { getDb, schema } from "@agents/core";
 import { isUuid } from "../util.js";
@@ -531,4 +531,107 @@ agentsRouter.post("/:id/run", async (c) => {
     .returning({ id: schema.runs.id });
 
   return c.json({ runId: run.id, status: "pending" }, 202);
+});
+
+/**
+ * GET /:id/stats — aggregate run metrics for a single agent.
+ *
+ * Returns counts by status, p50/p95 duration, total cost, plus the last 5
+ * failures with their error message so the user has something to click into.
+ * Ownership-scoped — file-source + own db-source agents only.
+ */
+agentsRouter.get("/:id/stats", async (c) => {
+  const id = c.req.param("id");
+  if (!isUuid(id)) {
+    return c.json({ error: "invalid_id" }, 400);
+  }
+  const db = getDb();
+  const userId = currentUserId(c);
+
+  const [agent] = await db
+    .select({ id: schema.agents.id })
+    .from(schema.agents)
+    .where(and(eq(schema.agents.id, id), visibleToUser(userId)))
+    .limit(1);
+  if (!agent) return c.json({ error: "agent not found" }, 404);
+
+  // Aggregates pulled in one query for cheapness. postgres-js returns
+  // numerics as strings — cast inside SQL so the body parses cleanly.
+  const [totals] = (await db.execute(sql`
+    SELECT
+      COUNT(*)::int                                                   AS total,
+      COUNT(*) FILTER (WHERE status = 'success')::int                 AS successes,
+      COUNT(*) FILTER (WHERE status IN ('failure','timeout','aborted'))::int AS failures,
+      COUNT(*) FILTER (WHERE status IN ('pending','active'))::int     AS in_flight,
+      COALESCE(SUM(cost_usd), 0)::float                               AS total_cost_usd,
+      COALESCE(SUM(input_tokens), 0)::int                             AS input_tokens,
+      COALESCE(SUM(output_tokens), 0)::int                            AS output_tokens,
+      COALESCE(SUM(cache_read_tokens), 0)::int                        AS cache_read_tokens,
+      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY duration_ms)::int  AS p50_duration_ms,
+      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms)::int  AS p95_duration_ms,
+      MAX(created_at)                                                 AS last_run_at
+    FROM runs
+    WHERE agent_id = ${id}
+  `)) as unknown as Array<{
+    total: number;
+    successes: number;
+    failures: number;
+    in_flight: number;
+    total_cost_usd: number;
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    p50_duration_ms: number | null;
+    p95_duration_ms: number | null;
+    last_run_at: string | null;
+  }>;
+
+  const recentFailures = await db
+    .select({
+      id: schema.runs.id,
+      status: schema.runs.status,
+      error: schema.runs.error,
+      createdAt: schema.runs.createdAt,
+    })
+    .from(schema.runs)
+    .where(
+      and(
+        eq(schema.runs.agentId, id),
+        inArray(schema.runs.status, ["failure", "timeout", "aborted"] as const),
+      ),
+    )
+    .orderBy(desc(schema.runs.createdAt))
+    .limit(5);
+
+  const t = totals ?? {
+    total: 0,
+    successes: 0,
+    failures: 0,
+    in_flight: 0,
+    total_cost_usd: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_tokens: 0,
+    p50_duration_ms: null,
+    p95_duration_ms: null,
+    last_run_at: null,
+  };
+
+  return c.json({
+    stats: {
+      total: t.total,
+      successes: t.successes,
+      failures: t.failures,
+      inFlight: t.in_flight,
+      successRate: t.total > 0 ? t.successes / t.total : null,
+      totalCostUsd: t.total_cost_usd,
+      inputTokens: t.input_tokens,
+      outputTokens: t.output_tokens,
+      cacheReadTokens: t.cache_read_tokens,
+      p50DurationMs: t.p50_duration_ms,
+      p95DurationMs: t.p95_duration_ms,
+      lastRunAt: t.last_run_at,
+    },
+    recentFailures,
+  });
 });
