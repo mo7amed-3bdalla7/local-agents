@@ -86,8 +86,16 @@ export function SessionDetail() {
       <PageHeader
         title={`Session ${session.id.slice(0, 8)}`}
         description={
-          <span className="flex items-center gap-2">
+          <span className="flex flex-wrap items-center gap-2">
             <StatusBadge status={session.status} />
+            {session.agentId && (
+              <Link
+                to={`/agents/${session.agentId}`}
+                className="text-emerald-400 hover:underline"
+              >
+                {session.agentName ?? session.agentId.slice(0, 8)}
+              </Link>
+            )}
             <span>
               started {new Date(session.startedAt).toLocaleString()}
               {session.finishedAt &&

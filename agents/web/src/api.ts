@@ -509,6 +509,8 @@ export interface Session extends SessionSummary {
   sdkSessionId: string | null;
   triggerContext: Record<string, unknown>;
   summaryJson: Record<string, unknown> | null;
+  /** Joined from agents.name on the detail endpoint. */
+  agentName?: string | null;
 }
 
 export interface SessionEvent {

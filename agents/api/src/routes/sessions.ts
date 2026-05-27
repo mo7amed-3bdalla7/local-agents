@@ -84,15 +84,19 @@ sessionsRouter.get("/:id", async (c) => {
   if (!isUuid(id)) {
     return c.json({ error: "invalid_id", message: "id must be a UUID" }, 400);
   }
-  const [session] = await db
-    .select()
+  const [row] = await db
+    .select({
+      session: schema.sessions,
+      agentName: schema.agents.name,
+    })
     .from(schema.sessions)
+    .leftJoin(schema.agents, eq(schema.sessions.agentId, schema.agents.id))
     .where(eq(schema.sessions.id, id))
     .limit(1);
-  if (!session) {
+  if (!row) {
     return c.json({ error: "session not found" }, 404);
   }
-  return c.json({ session });
+  return c.json({ session: { ...row.session, agentName: row.agentName } });
 });
 
 sessionsRouter.get("/:id/events", async (c) => {

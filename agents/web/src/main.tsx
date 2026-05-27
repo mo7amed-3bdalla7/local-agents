@@ -22,6 +22,7 @@ import { NotificationsPage } from "./pages/NotificationsPage.tsx";
 import { TemplatesPage } from "./pages/TemplatesPage.tsx";
 import { TokensPage } from "./pages/TokensPage.tsx";
 import { LoginPage } from "./pages/LoginPage.tsx";
+import { NotFound } from "./pages/NotFound.tsx";
 import { AuthProvider } from "./auth/AuthContext.tsx";
 import { RequireAuth } from "./auth/RequireAuth.tsx";
 import "./index.css";
@@ -68,6 +69,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="notifications" element={<NotificationsPage />} />
               <Route path="tokens" element={<TokensPage />} />
               <Route path="usage" element={<UsagePage />} />
+              <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>
         </AuthProvider>

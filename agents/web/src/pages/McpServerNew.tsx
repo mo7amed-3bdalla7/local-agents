@@ -164,7 +164,7 @@ export function McpServerNew() {
             </Field>
             <Field
               label="Env"
-              hint="KEY=VALUE per line; optional (plaintext for now)"
+              hint="KEY=VALUE per line; optional. Stored as plaintext in the row's configJson."
             >
               <textarea
                 value={envText}
@@ -188,7 +188,7 @@ export function McpServerNew() {
             </Field>
             <Field
               label="Headers"
-              hint="Name: Value per line; optional (plaintext for now)"
+              hint="Name: Value per line; optional. Stored as plaintext in the row's configJson."
             >
               <textarea
                 value={headersText}

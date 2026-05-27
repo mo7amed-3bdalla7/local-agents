@@ -365,8 +365,8 @@ function SubscriptionsTab() {
     return (
       <EmptyState
         icon={Bell}
-        title="No channels to subscribe"
-        description="Add a channel under the Channels tab first."
+        title="Add a channel first"
+        description="Subscriptions wire events (run failed, approval pending, …) to channels. Create one under the Channels tab, then come back here to flip on the events you want delivered."
       />
     );
   }

@@ -17,7 +17,7 @@ export function ConnectorsList() {
     <>
       <PageHeader
         title="Connectors"
-        description="First-party integrations (Jira so far; GitHub / Slack / WhatsApp slots in the schema). Per-instance config in Postgres + credential in the OS keychain."
+        description="First-party integrations. Per-instance config in Postgres, credentials in the OS keychain."
         actions={
           <Link
             to="/connectors/new"

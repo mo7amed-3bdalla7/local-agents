@@ -26,7 +26,7 @@ export function PrActivityList() {
         <EmptyState
           icon={GitPullRequest}
           title="No PR activity yet"
-          description="Every comment the outgoing-review agent drafts and every commit the incoming-review agent pushes will show up here, with its GitHub link and SHA."
+          description="Every comment your PR-reviewer agents draft and every commit they push will show up here, with its GitHub link and SHA."
         />
       )}
       {data && data.prActivity.length > 0 && (
