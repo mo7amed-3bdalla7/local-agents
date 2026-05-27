@@ -21,6 +21,7 @@ import {
   type RunUsage,
   type TriggerContext,
 } from "./config.js";
+import { costForTurn, pricingFor } from "./pricing.js";
 import { logger } from "./logger.js";
 
 /**
@@ -311,13 +312,24 @@ async function executeAgentCore(
       }
 
       let usage: RunUsage | undefined;
+      // Per-turn cost accumulator for the optional cost cap. The pricing
+      // table approximates Anthropic's published rates — see pricing.ts.
+      const maxCostUsd = config.execution?.maxCostUsd;
+      const pricing = pricingFor(config.execution?.model);
+      let runningCostUsd = 0;
+      let costCapHit = false;
+
+      // Combined abort signal: external SIGINT/UI-abort OR cost cap.
+      const costAbort = new AbortController();
+      const composedSignal = combineAbortSignals(signal, costAbort.signal);
+
       const result = await Promise.race([
         (async () => {
           for await (const message of query({
             prompt: fullPrompt,
             options: queryOptions as Parameters<typeof query>[0]["options"],
           })) {
-            if (signal?.aborted) break;
+            if (composedSignal.aborted) break;
 
             logLine(log, "--- message ---");
             log.write(formatMessage(message) + "\n");
@@ -327,6 +339,46 @@ async function executeAgentCore(
               payload: message,
               ts: new Date().toISOString(),
             });
+
+            // Per-turn cost cap. Assistant messages carry usage info; sum
+            // their token counts × pricing. If the cap is set and we cross
+            // it, abort the SDK loop and surface a clear error.
+            if (
+              maxCostUsd &&
+              maxCostUsd > 0 &&
+              pricing &&
+              message &&
+              typeof message === "object" &&
+              (message as { type?: unknown }).type === "assistant"
+            ) {
+              const inner = (message as { message?: { usage?: unknown } })
+                .message;
+              const u = inner?.usage as
+                | {
+                    input_tokens?: number;
+                    output_tokens?: number;
+                    cache_creation_input_tokens?: number;
+                    cache_read_input_tokens?: number;
+                  }
+                | undefined;
+              if (u) {
+                runningCostUsd += costForTurn(pricing, {
+                  inputTokens: u.input_tokens,
+                  outputTokens: u.output_tokens,
+                  cacheCreationTokens: u.cache_creation_input_tokens,
+                  cacheReadTokens: u.cache_read_input_tokens,
+                });
+                if (runningCostUsd >= maxCostUsd) {
+                  costCapHit = true;
+                  logLine(
+                    log,
+                    `Cost cap exceeded: $${runningCostUsd.toFixed(4)} >= $${maxCostUsd.toFixed(4)} — aborting`,
+                  );
+                  costAbort.abort();
+                  break;
+                }
+              }
+            }
 
             // Intercept the SDK's final result message to capture token + cost
             // accounting. Shape is { type:"result", total_cost_usd, usage:
@@ -390,6 +442,30 @@ async function executeAgentCore(
           undefined,
           "Execution timed out",
         );
+      }
+
+      if (costCapHit) {
+        const error = `Cost cap exceeded: $${runningCostUsd.toFixed(4)} >= $${maxCostUsd!.toFixed(4)}`;
+        const failed = buildResult(
+          config,
+          triggerContext,
+          startedAt,
+          start,
+          "failure",
+          result.output,
+          error,
+          // Surface the partial usage we accumulated. totalCostUsd is our
+          // estimate since the SDK's result message never fired.
+          {
+            ...(result.usage ?? {}),
+            totalCostUsd: runningCostUsd,
+          },
+        );
+        log.write(`\n${"=".repeat(72)}\n`);
+        logLine(log, `Run finished — ${error}`);
+        log.end();
+        restoreClaudeCode();
+        return failed;
       }
 
       const finalResult = buildResult(
@@ -496,4 +572,19 @@ function timeoutPromise(
   return new Promise((resolve) =>
     setTimeout(() => resolve({ status: "timeout" }), ms),
   );
+}
+
+/** Combine two AbortSignals — the result aborts when either does. */
+function combineAbortSignals(
+  a: AbortSignal | undefined,
+  b: AbortSignal,
+): AbortSignal {
+  if (!a) return b;
+  if (a.aborted) return a;
+  if (b.aborted) return b;
+  const ac = new AbortController();
+  const onAbort = () => ac.abort();
+  a.addEventListener("abort", onAbort, { once: true });
+  b.addEventListener("abort", onAbort, { once: true });
+  return ac.signal;
 }

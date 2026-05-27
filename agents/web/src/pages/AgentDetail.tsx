@@ -107,6 +107,17 @@ export function AgentDetail() {
                 dry run
               </span>
             )}
+            {(() => {
+              const cap = maxCostUsd(agent.configJson);
+              return cap != null ? (
+                <span
+                  title="The runner aborts the SDK loop when cumulative cost crosses this"
+                  className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-cyan-300 ring-1 ring-inset ring-cyan-500/30"
+                >
+                  ≤ ${cap.toFixed(2)}
+                </span>
+              ) : null;
+            })()}
           </span>
         }
         description={agent.description}
@@ -519,4 +530,15 @@ function isDryRun(configJson: Record<string, unknown> | null | undefined): boole
   if (!configJson || typeof configJson !== "object") return false;
   const exec = (configJson as { execution?: { dryRun?: unknown } }).execution;
   return exec?.dryRun === true;
+}
+
+function maxCostUsd(
+  configJson: Record<string, unknown> | null | undefined,
+): number | null {
+  if (!configJson || typeof configJson !== "object") return null;
+  const exec = (configJson as { execution?: { maxCostUsd?: unknown } })
+    .execution;
+  return typeof exec?.maxCostUsd === "number" && exec.maxCostUsd > 0
+    ? exec.maxCostUsd
+    : null;
 }

@@ -14,13 +14,15 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test": "node --import tsx --test --test-reporter=spec 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
     "typescript": "5.9.2"
   }
 }

@@ -246,6 +246,7 @@ agentsRouter.get("/", async (c) => {
   const agents = rows.map(({ configJson, ...rest }) => ({
     ...rest,
     dryRun: isDryRun(configJson),
+    maxCostUsd: getMaxCostUsd(configJson),
   }));
   return c.json({ agents });
 });
@@ -254,6 +255,15 @@ function isDryRun(configJson: unknown): boolean {
   if (!configJson || typeof configJson !== "object") return false;
   const exec = (configJson as { execution?: { dryRun?: unknown } }).execution;
   return exec?.dryRun === true;
+}
+
+function getMaxCostUsd(configJson: unknown): number | null {
+  if (!configJson || typeof configJson !== "object") return null;
+  const exec = (configJson as { execution?: { maxCostUsd?: unknown } })
+    .execution;
+  return typeof exec?.maxCostUsd === "number" && exec.maxCostUsd > 0
+    ? exec.maxCostUsd
+    : null;
 }
 
 agentsRouter.get("/:id", async (c) => {

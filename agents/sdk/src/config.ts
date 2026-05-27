@@ -123,6 +123,14 @@ export interface ExecutionConfig {
    * call any attached MCP servers, so reasoning-heavy prompts still work.
    */
   dryRun?: boolean;
+  /**
+   * Cost cap in USD. The runner sums per-turn input/output/cache token spend
+   * against a pricing table and aborts the SDK loop when cumulative cost
+   * exceeds this. The run is marked status='failed' with an error message
+   * carrying the observed spend. Set to 0 or omit to disable. Pricing is
+   * approximate — see pricing.ts.
+   */
+  maxCostUsd?: number;
 }
 
 /** Tools stripped in dry-run mode. Mutating side effects only. */

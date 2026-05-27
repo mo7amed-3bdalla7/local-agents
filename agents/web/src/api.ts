@@ -439,6 +439,8 @@ export interface AgentSummary {
   updatedAt: string;
   /** Derived from configJson.execution.dryRun on the server. */
   dryRun?: boolean;
+  /** Derived from configJson.execution.maxCostUsd. Null when not capped. */
+  maxCostUsd?: number | null;
 }
 
 export interface Agent extends AgentSummary {

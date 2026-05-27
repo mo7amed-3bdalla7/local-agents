@@ -75,6 +75,14 @@ export function AgentsList() {
                       dry run
                     </span>
                   )}
+                  {agent.maxCostUsd != null && (
+                    <span
+                      title="The runner aborts the SDK loop when cumulative cost crosses this"
+                      className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-cyan-300 ring-1 ring-inset ring-cyan-500/30"
+                    >
+                      ≤ ${agent.maxCostUsd.toFixed(2)}
+                    </span>
+                  )}
                   {!agent.enabled && (
                     <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
                       disabled
