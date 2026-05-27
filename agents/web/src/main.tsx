@@ -19,6 +19,7 @@ import { RepoNew } from "./pages/RepoNew.tsx";
 import { UsagePage } from "./pages/UsagePage.tsx";
 import { ApprovalsList } from "./pages/ApprovalsList.tsx";
 import { NotificationsPage } from "./pages/NotificationsPage.tsx";
+import { TemplatesPage } from "./pages/TemplatesPage.tsx";
 import { TokensPage } from "./pages/TokensPage.tsx";
 import { LoginPage } from "./pages/LoginPage.tsx";
 import { AuthProvider } from "./auth/AuthContext.tsx";
@@ -51,6 +52,7 @@ createRoot(document.getElementById("root")!).render(
               <Route index element={<AgentsList />} />
               <Route path="agents" element={<AgentsList />} />
               <Route path="agents/new" element={<AgentNew />} />
+              <Route path="templates" element={<TemplatesPage />} />
               <Route path="agents/:id" element={<AgentDetail />} />
               <Route path="sessions" element={<SessionsList />} />
               <Route path="sessions/:id" element={<SessionDetail />} />

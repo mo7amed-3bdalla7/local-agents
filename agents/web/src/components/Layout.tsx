@@ -6,6 +6,7 @@ import {
   Bell,
   Boxes,
   Bot,
+  FileStack,
   FolderGit2,
   GitPullRequest,
   KeyRound,
@@ -26,6 +27,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: "/agents", label: "Agents", icon: Bot, end: false },
+  { to: "/templates", label: "Templates", icon: FileStack, end: false },
   { to: "/sessions", label: "Sessions", icon: Activity, end: false },
   { to: "/connectors", label: "Connectors", icon: PlugZap, end: false },
   { to: "/skills", label: "Skills", icon: Sparkles, end: false },

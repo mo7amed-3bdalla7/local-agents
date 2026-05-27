@@ -193,6 +193,16 @@ export const api = {
     get: (days?: number) =>
       request<Usage>(`/usage${days != null ? `?days=${days}` : ""}`),
   },
+  templates: {
+    list: () => request<{ templates: AgentTemplate[] }>("/templates"),
+    get: (slug: string) =>
+      request<{ template: AgentTemplate }>(`/templates/${slug}`),
+    clone: (slug: string, args: { name?: string; description?: string }) =>
+      request<{ agent: Agent }>(`/templates/${slug}/clone`, {
+        method: "POST",
+        body: JSON.stringify(args),
+      }),
+  },
   tokens: {
     list: () => request<{ tokens: ApiTokenSummary[] }>("/tokens"),
     create: (args: CreateTokenArgs) =>
@@ -265,6 +275,19 @@ export const api = {
       }),
   },
 };
+
+export interface AgentTemplate {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  category: string;
+  systemPrompt: string;
+  configJson: Record<string, unknown>;
+  recommendedConnectors: string[];
+  recommendedSkills: string[];
+  createdAt: string;
+}
 
 export interface ApiTokenSummary {
   id: string;
