@@ -103,6 +103,16 @@ export {
 } from "./approvals/index.js";
 
 export {
+  cloneTemplate,
+  getTemplateBySlug,
+  listTemplates,
+  seedDefaultTemplates,
+  type AgentTemplate,
+  type CloneTemplateArgs,
+  type TemplateSeed,
+} from "./templates/index.js";
+
+export {
   createApiToken,
   listApiTokens,
   revokeApiToken,

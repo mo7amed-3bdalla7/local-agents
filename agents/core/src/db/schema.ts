@@ -157,6 +157,30 @@ export const authSessions = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Agent templates — pre-built recipes users clone into their own db-source
+// agents. System-owned (no owner_id); listing is open to all users.
+// ---------------------------------------------------------------------------
+
+export const agentTemplates = pgTable("agent_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** Stable identifier — used by seeders so re-seeding upserts cleanly. */
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  /** Free-form bucket for the UI: "code", "ops", "support", … */
+  category: text("category").notNull(),
+  systemPrompt: text("system_prompt").notNull(),
+  /** Same shape as agents.configJson — prompt, execution, triggers. */
+  configJson: jsonb("config_json").notNull(),
+  /** Hints surfaced to the user during clone: ["github","jira"], … */
+  recommendedConnectors: jsonb("recommended_connectors").notNull().default([]),
+  recommendedSkills: jsonb("recommended_skills").notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
 // Agents — both file-discovered and UI-created agents land here
 // ---------------------------------------------------------------------------
 

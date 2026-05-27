@@ -20,6 +20,7 @@ import { logger as honoLogger } from "hono/logger";
 import { logger } from "@agents/sdk";
 import {
   bootstrapDefaultUser,
+  seedDefaultTemplates,
   closeDb,
   validateSession,
   verifyApiToken,
@@ -30,6 +31,7 @@ import { agentsRouter } from "./routes/agents.js";
 import { approvalsRouter } from "./routes/approvals.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { sessionsRouter } from "./routes/sessions.js";
+import { templatesRouter } from "./routes/templates.js";
 import { tokensRouter } from "./routes/tokens.js";
 import { registerPrCommentExecutor } from "./executors/pr-comment.js";
 import { registerSlackMessageExecutor } from "./executors/slack-message.js";
@@ -164,6 +166,7 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
   api.route("/approvals", approvalsRouter);
   api.route("/notifications", notificationsRouter);
   api.route("/tokens", tokensRouter);
+  api.route("/templates", templatesRouter);
   app.route("/api", api);
 
   app.onError((err, c) => {
@@ -195,6 +198,15 @@ async function main() {
         ? "Set AGENTS_DEFAULT_ADMIN_PASSWORD before first boot in production. Change the password via the UI now."
         : undefined,
     });
+  }
+
+  // Seed the built-in agent template catalog (idempotent upsert).
+  const templateCount = await seedDefaultTemplates().catch((err) => {
+    logger.warn("Template seed failed", { error: String(err) });
+    return 0;
+  });
+  if (templateCount > 0) {
+    logger.info("Templates seeded", { count: templateCount });
   }
 
   // Register action executors so approve calls can dispatch them
