@@ -1,155 +1,177 @@
 # Local Agents
 
-A Turborepo monorepo for running autonomous AI agents locally, powered by the [Claude Agent SDK](https://docs.anthropic.com).
-
-Each agent is a self-contained package under `agents/` — defined by a system prompt (`AGENTS.md`) and an execution config (`agent.config.ts`). A shared scheduler orchestrates triggers (cron, webhooks, GitHub events, file watchers) and runs agents via the Claude Agent SDK. A REST API and React dashboard expose the platform for inspection and manual control.
+A self-hosted platform for running autonomous AI agents locally, powered by the [Claude Agent SDK](https://docs.anthropic.com). Each agent is a self-contained package with a system prompt and an execution config; a shared scheduler drives them on cron / webhook / GitHub / file / inter-agent triggers, the Hono API exposes everything as REST + SSE, and a React dashboard plus a Bearer-auth CLI give you two ways to drive the system.
 
 ## Structure
 
 ```
 agents/
-├── sdk/              ← @agents/sdk — shared runtime (defineAgent, runner, logger, types)
-├── core/             ← @agents/core — Postgres schema (Drizzle), secrets adapter (OS keychain)
-├── scheduler/        ← @agents/scheduler — orchestration engine (cron, webhooks, GitHub poller)
-├── api/              ← @agents/api — Hono REST server + Postgres-queue worker (port 3848)
-├── web/              ← @agents/web — Vite + React dashboard (port 5173)
-├── pr-reviewer/      ← example agent — reviews PRs across GitHub repos
-└── your-agent/       ← add your own agents here
+├── sdk/                ← @agents/sdk — runner, defineAgent, runtime types
+├── core/               ← @agents/core — Postgres schema (Drizzle), secrets (OS keychain),
+│                              auth, tokens, approvals, notifications
+├── scheduler/          ← @agents/scheduler — orchestration engine (5 trigger types)
+├── api/                ← @agents/api — Hono REST + Vite-embedded UI + Postgres queue worker
+│                              (single process on port 3848)
+├── web/                ← @agents/web — React dashboard (mounted by the api server)
+├── cli/                ← @agents/cli — `agents …` Bearer-auth control plane
+├── pr-reviewer/        ← example agent — generic PR reviewer
+├── pr-incoming-review/ ← example agent — first-pass review for external PRs
+└── jira-triage/        ← example agent — classify the Jira backlog
 ```
 
 ## Prerequisites
 
 - Node.js **20+**
 - pnpm **9.15+** (`npm install -g pnpm`)
-- Docker (for the Postgres + Redis stack)
-- A Claude Max subscription OAuth token (see [Authentication](#authentication))
+- Docker (for the Postgres stack)
+- A Claude Max subscription OAuth token
 
 ## Quick start
 
-From a fresh clone:
-
 ```bash
-# 1. Install dependencies
+# 1. Install
 pnpm install
 
-# 2. Copy the env template and fill in your OAuth token
+# 2. Env
 cp .env.example .env
-# Edit .env and set CLAUDE_CODE_OAUTH_TOKEN=<your-token>
+# Edit .env and set CLAUDE_CODE_OAUTH_TOKEN=<run `claude setup-token` to mint one>
 
-# 3. Bring up Postgres + Redis (+ Adminer on :8080)
-pnpm compose:up
+# 3. Postgres
+pnpm compose:up                                          # postgres on :5432, adminer on :8080
 
 # 4. Build everything
 pnpm build
 
-# 5. Run database migrations (creates the 14 platform tables)
+# 5. Migrate the database
 pnpm db:migrate
 
-# 6. Start the platform (one process serves API + dashboard)
-pnpm api      # → http://localhost:3848
+# 6. Start the platform (API + dashboard on a single port)
+pnpm api                                                 # http://localhost:3848
 
-# 7. Open the dashboard
+# 7. Open the dashboard, sign in with the bootstrap admin
+#    Default user: admin@local / admin   (override via AGENTS_DEFAULT_ADMIN_PASSWORD)
 open http://localhost:3848
 ```
 
-Click into the `pr-reviewer` agent and hit **Run now** to enqueue a run. The session-detail page polls live as the SDK streams events into the timeline.
+Click into `pr-reviewer` and hit **Run now**. The session-detail page streams events live over SSE.
 
-## Authentication
+## Authentication, in two layers
 
-Agents authenticate via a Claude Max subscription OAuth token:
+There are two distinct credentials at play, easy to confuse:
 
-```bash
-claude setup-token
-```
+1. **Claude Max OAuth token** (`CLAUDE_CODE_OAUTH_TOKEN`) — how *agents* talk to Claude. Stored in `.env`, used by every run. Mint via `claude setup-token` once.
+2. **User session** (cookies) or **API token** (`Bearer agt_...`) — how *you* talk to this platform. The dashboard uses cookies after `/login`; the CLI uses tokens minted at `/tokens`.
 
-Set the token in `.env` at the repo root:
+The default admin is `admin@local` / `admin`. Override before first boot with `AGENTS_DEFAULT_ADMIN_PASSWORD` (and `_EMAIL`, `_NAME`). Subsequent users are created by the admin via the API.
 
-```
-CLAUDE_CODE_OAUTH_TOKEN=<your-token>
-```
+Resources are owned per-user — `db`-source agents, connectors, MCP servers, repos, secrets, tokens, and notification channels are private to their owner. `file`-source agents (discovered on disk) are shared baseline.
 
-`.env.example` documents every environment variable the platform reads (database URL, redis URL, ports, optional Slack webhook, optional GitHub state dir).
+## CLI
 
-## Common commands
+`@agents/cli` lets you script everything the dashboard does:
 
 ```bash
-# Infrastructure
-pnpm compose:up                 # start Postgres + Redis + Adminer
-pnpm compose:down               # stop the stack
-pnpm compose:logs               # follow container logs
-pnpm db:migrate                 # apply Drizzle migrations
-
-# API + UI (one server)
-pnpm api                        # API on /api/* + React dashboard at /, port 3848
-pnpm web                        # standalone web dev server on :5173 (rarely needed —
-                                #   proxies /api/* back to :3848. Use when you want
-                                #   HMR without booting the worker)
-pnpm api:build                  # build just the api package
-pnpm web:build                  # build just the web package
-
-# Build / test / typecheck (whole monorepo)
-pnpm build                      # turbo build
-pnpm check-types                # turbo check-types
-pnpm test                       # turbo test
-
-# Agents (CLI, scheduler-driven)
-pnpm agent-list                 # show discovered agents and triggers
-pnpm agent-run -- pr-reviewer   # manually trigger an agent
-pnpm agent-logs -- pr-reviewer  # tail the latest run log
-pnpm scheduler                  # start the scheduler daemon (dev)
-
-# Scheduler (pm2, production)
-pnpm scheduler:start            # start scheduler via pm2
-pnpm scheduler:stop             # stop scheduler
-pnpm scheduler:restart          # rebuild + restart
-pnpm scheduler:logs             # tail pm2 logs
+# Mint a token at /tokens in the UI, then:
+pnpm cli login --token agt_...
+pnpm cli whoami
+pnpm cli agents list
+pnpm cli agents run pr-reviewer
+pnpm cli runs tail 42                # streams the SSE event timeline
+pnpm cli sessions list --limit 10
+pnpm cli tokens mint my-cron-job
+pnpm cli tokens revoke <id>
 ```
 
-## Web UI
+Config persists at `~/.config/agents/config.json` (0600). Override at runtime with `AGENTS_API` and `AGENTS_TOKEN`.
 
-`pnpm api` boots the dashboard at `http://localhost:3848` alongside the REST API. The dashboard exposes:
+## Dashboard tour
 
-- **Agents** — list of discovered agents, each with system prompt, config, recent runs, and a **Run now** button
-- **Sessions** — every agent execution with status (active → completed/failed/timeout/aborted) and a live event timeline
-- **Connectors / Skills / MCP servers / PR activity** — registries surfaced as they land
+`pnpm api` boots everything on `http://localhost:3848`:
 
-Both detail pages auto-poll while a run is in flight, so the UI updates without a refresh.
+| Page | What it shows |
+|---|---|
+| **Agents** | All visible agents, source badge (file/db), a **DRY RUN** badge if mutating tools are stripped, **Run now** button on the detail page |
+| **Sessions** | Filterable list (status chips, agent, date range — URL-state-driven) + per-session live event timeline (typed cards) |
+| **Approvals** | Side-effecting actions agents have proposed (PR comments, Slack messages, …) waiting for human approval. Tabs for Pending / Executed / Rejected / Failed |
+| **Notifications** | Channels (console, webhook, slack), Subscriptions matrix (events × channels), Deliveries audit log |
+| **Connectors / Skills / MCP servers / Repos** | Registries with CRUD + Test buttons |
+| **API tokens** | Mint (plaintext shown once), revoke, see last-used |
+| **Usage** | Per-agent + per-day cost / token rollups (last 7 days by default) |
+| **PR activity** | Audit log of comments and commits agents have posted under your GitHub identity |
+
+Per-agent **stats panel** above each agent detail page: success rate, p50/p95 duration, total cost, recent failures.
+
+## Triggers
+
+Defined in each agent's `agent.config.ts` and registered automatically when the API server starts. Five types:
+
+| Type | Shape | Notes |
+|---|---|---|
+| **cron** | `{type:"cron", schedule:"0 9 * * *", timezone?, skipIfRunning?}` | node-cron, agent-side timezone aware |
+| **webhook** | `{type:"webhook", path?, secret?, passBody?}` | `POST /api/triggers/<path>`, HMAC-SHA256 verified, exempt from user auth |
+| **file** | `{type:"file", patterns:["src/**/*.ts"], debounceMs?}` | chokidar (polling on macOS) |
+| **github** | `{type:"github", repo:"owner/name", events:["pr:opened",…]}` | gh CLI poller, state-diffed across cycles |
+| **agent** | `{type:"agent", source:"upstream-name", onSuccess?, onFailure?}` | pipeline — fires downstream on completion |
+
+Cycles in inter-agent pipelines are detected at startup and logged.
+
+## Approvals + Notifications
+
+**Approvals**: agents stage side-effecting actions via a built-in MCP tool `propose_action({kind, title, description, payload})`. Each action lands in `pending_actions` with `status=pending`; a human approves in the UI, the registered executor for that `kind` runs synchronously and writes back `executed` or `failed` with the result/error.
+
+Shipped executors:
+- `pr_comment` — `gh pr comment <num> --repo owner/name --body …`
+- `slack_message` — posts via the owner's `slack` notification channel
+
+**Notifications**: `dispatchEvent({ownerId, event, …})` fans out to every enabled subscribed channel. Events: `run_succeeded | run_failed | approval_pending | approval_failed`. Senders are pluggable — shipped: `console`, `webhook` (HMAC-signed JSON POST), `slack` (incoming webhook).
+
+Adding a new executor or sender is a single file + one `registerExecutor` / `registerSender` call at startup.
 
 ## Creating a new agent
 
-Each agent needs 4 files: `AGENTS.md`, `agent.config.ts`, `package.json`, `tsconfig.json`. No `src/index.ts` — the SDK runner handles execution.
+Each agent needs 4 files: `AGENTS.md`, `agent.config.ts`, `package.json`, `tsconfig.json`. No `src/index.ts` — the runner handles execution.
 
 ```bash
 mkdir -p agents/my-agent
 # scaffold the 4 files (see agents/pr-reviewer/ as a reference)
 pnpm turbo build --filter=@agents/my-agent
-pnpm agent-list                # confirms discovery
-pnpm agent-run -- my-agent     # smoke test
+pnpm cli agents list                # confirms discovery
+pnpm cli agents run my-agent        # smoke test
 ```
 
-See [`AGENTS.md`](./AGENTS.md) for the full guide on agent structure, triggers, skills, and orchestration.
+See [`AGENTS.md`](./AGENTS.md) for the full guide on structure, triggers, skills, and orchestration.
 
-## Example: PR reviewer
+Set `execution.dryRun: true` in `agent.config.ts` to strip `Edit`, `Write`, `Bash`, `NotebookEdit` from the agent's allowed tools at runtime — useful for testing prompts without letting the agent modify anything.
 
-The included `pr-reviewer` agent demonstrates a GitHub-triggered agent that:
+## Tests
 
-- Watches for PR events (opened, reopened, synchronized) on configured repos
-- Clones the repo, checks out the PR branch, reads the diff
-- Discovers project conventions from docs (CLAUDE.md, README, etc.)
-- Posts a structured code review via `gh` CLI
-- Supports both formal GitHub reviews and PR comments
-- Optionally labels PRs based on review outcome
+```bash
+pnpm test                                                # all packages (skips DB tests without DATABASE_URL)
+DATABASE_URL=postgres://agents:agents@localhost:5432/agents pnpm test    # full suite
+```
 
-Configure repos in `agents/pr-reviewer/agent.config.ts`.
+Node's built-in test runner via tsx. Today the suite covers password hashing, token format + lifecycle, and keychain round-trips; new tests live alongside the modules they cover (`*.test.ts`).
 
-## Scheduler triggers
+## Commands
 
-- **Cron** — run on a schedule
-- **Webhook** — `POST /trigger/{agent}` (port 3847)
-- **GitHub** — react to PR/issue events via polling
-- **File watch** — react to file changes
-- **Inter-agent** — chain agents together
-- **Manual** — always available via `pnpm agent-run` or the dashboard's **Run now** button
+```bash
+# Infrastructure
+pnpm compose:up | compose:down | compose:logs           # Postgres
+pnpm db:migrate                                          # Drizzle migrations
+
+# Platform
+pnpm api                                                 # API + UI, port 3848
+pnpm web                                                 # standalone web dev (rare; UI is mounted in api)
+pnpm cli <command>                                       # talk to the API as a user
+
+# Build / typecheck / test
+pnpm build | check-types | test
+
+# Scheduler (legacy stand-alone process — most users won't need this;
+# the api server hosts the scheduler internally)
+pnpm scheduler              | scheduler:start | scheduler:stop | scheduler:restart
+pnpm agent-list | agent-run -- <name> | agent-logs -- <name>
+```
 
 ## License
 
