@@ -414,6 +414,8 @@ export interface AgentSummary {
   source: "file" | "db";
   enabled: boolean;
   updatedAt: string;
+  /** Derived from configJson.execution.dryRun on the server. */
+  dryRun?: boolean;
 }
 
 export interface Agent extends AgentSummary {

@@ -67,6 +67,14 @@ export function AgentsList() {
                     {agent.name}
                   </div>
                   <SourceTag source={agent.source} />
+                  {agent.dryRun && (
+                    <span
+                      title="Mutating tools (Edit/Write/Bash) are stripped at runtime"
+                      className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300 ring-1 ring-inset ring-amber-500/30"
+                    >
+                      dry run
+                    </span>
+                  )}
                   {!agent.enabled && (
                     <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
                       disabled

@@ -96,7 +96,19 @@ export function AgentDetail() {
         <ArrowLeft className="size-4" /> Agents
       </Link>
       <PageHeader
-        title={agent.name}
+        title={
+          <span className="inline-flex items-center gap-2">
+            {agent.name}
+            {isDryRun(agent.configJson) && (
+              <span
+                title="Mutating tools (Edit/Write/Bash) are stripped at runtime"
+                className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300 ring-1 ring-inset ring-amber-500/30"
+              >
+                dry run
+              </span>
+            )}
+          </span>
+        }
         description={agent.description}
         actions={
           <div className="flex items-center gap-2">
@@ -501,4 +513,10 @@ function fmtDuration(ms: number | null): string {
   const m = Math.floor(ms / 60_000);
   const s = Math.round((ms % 60_000) / 1000);
   return `${m}m ${s}s`;
+}
+
+function isDryRun(configJson: Record<string, unknown> | null | undefined): boolean {
+  if (!configJson || typeof configJson !== "object") return false;
+  const exec = (configJson as { execution?: { dryRun?: unknown } }).execution;
+  return exec?.dryRun === true;
 }

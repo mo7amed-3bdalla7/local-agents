@@ -238,12 +238,23 @@ agentsRouter.get("/", async (c) => {
       source: schema.agents.source,
       enabled: schema.agents.enabled,
       updatedAt: schema.agents.updatedAt,
+      configJson: schema.agents.configJson,
     })
     .from(schema.agents)
     .where(visibleToUser(userId))
     .orderBy(schema.agents.name);
-  return c.json({ agents: rows });
+  const agents = rows.map(({ configJson, ...rest }) => ({
+    ...rest,
+    dryRun: isDryRun(configJson),
+  }));
+  return c.json({ agents });
 });
+
+function isDryRun(configJson: unknown): boolean {
+  if (!configJson || typeof configJson !== "object") return false;
+  const exec = (configJson as { execution?: { dryRun?: unknown } }).execution;
+  return exec?.dryRun === true;
+}
 
 agentsRouter.get("/:id", async (c) => {
   const db = getDb();

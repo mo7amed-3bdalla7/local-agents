@@ -12,13 +12,14 @@ import {
   type PermissionMode,
 } from "@anthropic-ai/claude-agent-sdk";
 
-import type {
-  AgentConfig,
-  RunEvent,
-  RunResult,
-  RunStatus,
-  RunUsage,
-  TriggerContext,
+import {
+  MUTATING_TOOLS,
+  type AgentConfig,
+  type RunEvent,
+  type RunResult,
+  type RunStatus,
+  type RunUsage,
+  type TriggerContext,
 } from "./config.js";
 import { logger } from "./logger.js";
 
@@ -277,13 +278,17 @@ async function executeAgentCore(
       const cwd = config.execution?.cwd ?? agentDir;
       let output = "";
 
-      const baseTools = config.execution?.tools ?? [
+      let baseTools = config.execution?.tools ?? [
         "Read",
         "Edit",
         "Bash",
         "Glob",
         "Grep",
       ];
+      if (config.execution?.dryRun) {
+        baseTools = baseTools.filter((t) => !MUTATING_TOOLS.has(t));
+        logLine(log, `Dry-run mode active. Mutating tools stripped.`);
+      }
       const allowedTools =
         extraAllowedTools && extraAllowedTools.length > 0
           ? [...baseTools, ...extraAllowedTools]

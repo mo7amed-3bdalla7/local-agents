@@ -116,7 +116,22 @@ export interface ExecutionConfig {
   model?: string;
   /** Working directory for the agent process. Defaults to the agent's package directory. */
   cwd?: string;
+  /**
+   * Dry-run mode: strip mutating tools (Edit, Write, Bash, NotebookEdit) from
+   * allowedTools at run time. Useful for testing prompts without letting the
+   * agent change anything. The agent can still Read/Glob/Grep/WebFetch and
+   * call any attached MCP servers, so reasoning-heavy prompts still work.
+   */
+  dryRun?: boolean;
 }
+
+/** Tools stripped in dry-run mode. Mutating side effects only. */
+export const MUTATING_TOOLS = new Set([
+  "Edit",
+  "Write",
+  "Bash",
+  "NotebookEdit",
+]);
 
 // ---------------------------------------------------------------------------
 // Run result
