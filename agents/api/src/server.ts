@@ -32,7 +32,9 @@ import { notificationsRouter } from "./routes/notifications.js";
 import { sessionsRouter } from "./routes/sessions.js";
 import { tokensRouter } from "./routes/tokens.js";
 import { registerPrCommentExecutor } from "./executors/pr-comment.js";
+import { registerSlackMessageExecutor } from "./executors/slack-message.js";
 import { registerConsoleSender } from "./senders/console.js";
+import { registerSlackSender } from "./senders/slack.js";
 import { registerWebhookSender } from "./senders/webhook.js";
 import {
   connectorsRouter,
@@ -198,10 +200,12 @@ async function main() {
   // Register action executors so approve calls can dispatch them
   // synchronously. New action kinds register here.
   registerPrCommentExecutor();
+  registerSlackMessageExecutor();
 
   // Register notification senders. New transports plug in here.
   registerConsoleSender();
   registerWebhookSender();
+  registerSlackSender();
 
   await syncFileAgents().catch((err) =>
     logger.warn("File-agent sync failed", { error: String(err) }),

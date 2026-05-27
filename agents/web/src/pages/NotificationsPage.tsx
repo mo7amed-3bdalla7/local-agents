@@ -217,10 +217,12 @@ function NewChannelForm({
     },
   });
 
+  const needsUrl = kind === "webhook" || kind === "slack";
+
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const configJson: Record<string, unknown> = kind === "webhook" ? { url } : {};
+    const configJson: Record<string, unknown> = needsUrl ? { url } : {};
     create.mutate({
       kind,
       displayName: displayName.trim(),
@@ -262,31 +264,37 @@ function NewChannelForm({
             className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
           />
         </label>
+        {needsUrl && (
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-zinc-400">
+              {kind === "slack" ? "Slack incoming webhook URL" : "Webhook URL"}
+            </span>
+            <input
+              type="url"
+              required
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder={
+                kind === "slack"
+                  ? "https://hooks.slack.com/services/T.../B.../..."
+                  : "https://example.com/hooks/agents"
+              }
+              className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 font-mono"
+            />
+          </label>
+        )}
         {kind === "webhook" && (
-          <>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-zinc-400">Webhook URL</span>
-              <input
-                type="url"
-                required
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://example.com/hooks/agents"
-                className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 font-mono"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-zinc-400">
-                HMAC secret (optional, sent as x-agents-signature)
-              </span>
-              <input
-                type="password"
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-                className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 font-mono"
-              />
-            </label>
-          </>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-zinc-400">
+              HMAC secret (optional, sent as x-agents-signature)
+            </span>
+            <input
+              type="password"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 font-mono"
+            />
+          </label>
         )}
         {error && (
           <div className="rounded-md border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-sm text-rose-300">
