@@ -64,6 +64,7 @@ export const api = {
   },
   agents: {
     list: () => request<{ agents: AgentSummary[] }>("/agents"),
+    stats: (id: string) => request<AgentStatsResponse>(`/agents/${id}/stats`),
     get: (id: string) =>
       request<{
         agent: Agent;
@@ -116,7 +117,20 @@ export const api = {
       request<unknown>(`/agents/${id}`, { method: "DELETE" }),
   },
   sessions: {
-    list: () => request<{ sessions: SessionSummary[] }>("/sessions"),
+    list: (filters?: SessionsListFilters) => {
+      const params = new URLSearchParams();
+      if (filters?.status && filters.status.length > 0) {
+        params.set("status", filters.status.join(","));
+      }
+      if (filters?.agentId) params.set("agentId", filters.agentId);
+      if (filters?.since) params.set("since", filters.since);
+      if (filters?.until) params.set("until", filters.until);
+      if (filters?.limit) params.set("limit", String(filters.limit));
+      const qs = params.toString();
+      return request<{ sessions: SessionSummary[] }>(
+        `/sessions${qs ? `?${qs}` : ""}`,
+      );
+    },
     get: (id: string) => request<{ session: Session }>(`/sessions/${id}`),
     events: (id: string) =>
       request<{ events: SessionEvent[] }>(`/sessions/${id}/events`),
@@ -420,6 +434,39 @@ export interface UpdateAgentArgs {
   systemPrompt?: string | null;
   configJson?: Record<string, unknown>;
   enabled?: boolean;
+}
+
+export interface SessionsListFilters {
+  status?: Array<SessionSummary["status"]>;
+  agentId?: string;
+  /** ISO timestamp. */
+  since?: string;
+  /** ISO timestamp. */
+  until?: string;
+  limit?: number;
+}
+
+export interface AgentStatsResponse {
+  stats: {
+    total: number;
+    successes: number;
+    failures: number;
+    inFlight: number;
+    successRate: number | null;
+    totalCostUsd: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    p50DurationMs: number | null;
+    p95DurationMs: number | null;
+    lastRunAt: string | null;
+  };
+  recentFailures: Array<{
+    id: number;
+    status: string;
+    error: string | null;
+    createdAt: string;
+  }>;
 }
 
 export interface SessionSummary {

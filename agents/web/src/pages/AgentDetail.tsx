@@ -144,6 +144,8 @@ export function AgentDetail() {
         </div>
       )}
 
+      <StatsPanel agentId={agent.id} />
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
@@ -377,4 +379,126 @@ function CapabilityList<T extends Skill | Connector | McpServer>({
       })}
     </ul>
   );
+}
+
+function StatsPanel({ agentId }: { agentId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["agents", agentId, "stats"],
+    queryFn: () => api.agents.stats(agentId),
+    refetchInterval: 10_000,
+  });
+
+  if (isLoading) {
+    return <div className="mb-6 h-24 animate-pulse rounded-lg bg-zinc-900" />;
+  }
+  if (!data) return null;
+  const s = data.stats;
+  if (s.total === 0) return null;
+
+  return (
+    <div className="mb-6 space-y-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard
+          label="Success rate"
+          value={
+            s.successRate == null
+              ? "—"
+              : `${(s.successRate * 100).toFixed(0)}%`
+          }
+          hint={`${s.successes}/${s.total} runs`}
+          tone={
+            s.successRate == null
+              ? "neutral"
+              : s.successRate >= 0.9
+                ? "good"
+                : s.successRate >= 0.5
+                  ? "warn"
+                  : "bad"
+          }
+        />
+        <StatCard
+          label="p50 duration"
+          value={fmtDuration(s.p50DurationMs)}
+          hint={`p95 ${fmtDuration(s.p95DurationMs)}`}
+        />
+        <StatCard
+          label="Total cost"
+          value={`$${s.totalCostUsd.toFixed(4)}`}
+          hint={`${(s.inputTokens + s.outputTokens).toLocaleString()} tokens`}
+        />
+        <StatCard
+          label="Runs"
+          value={String(s.total)}
+          hint={
+            s.inFlight > 0
+              ? `${s.inFlight} in flight`
+              : s.failures > 0
+                ? `${s.failures} failed`
+                : "all done"
+          }
+        />
+      </div>
+
+      {data.recentFailures.length > 0 && (
+        <details className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 text-sm">
+          <summary className="cursor-pointer text-zinc-300">
+            Recent failures ({data.recentFailures.length})
+          </summary>
+          <ul className="mt-2 space-y-1">
+            {data.recentFailures.map((r) => (
+              <li
+                key={r.id}
+                className="grid grid-cols-[120px_80px_1fr] items-start gap-3 text-xs"
+              >
+                <span className="font-mono text-zinc-500">
+                  {new Date(r.createdAt).toLocaleString()}
+                </span>
+                <span className="text-rose-300">{r.status}</span>
+                <span className="truncate text-zinc-400">
+                  {r.error ?? "(no error message)"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "neutral" | "good" | "warn" | "bad";
+}) {
+  const toneClass = {
+    neutral: "text-zinc-100",
+    good: "text-emerald-300",
+    warn: "text-amber-300",
+    bad: "text-rose-300",
+  }[tone];
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+      <div className="text-xs text-zinc-500">{label}</div>
+      <div className={`mt-1 text-xl font-medium ${toneClass}`}>{value}</div>
+      {hint && (
+        <div className="mt-0.5 text-[11px] text-zinc-500">{hint}</div>
+      )}
+    </div>
+  );
+}
+
+function fmtDuration(ms: number | null): string {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const m = Math.floor(ms / 60_000);
+  const s = Math.round((ms % 60_000) / 1000);
+  return `${m}m ${s}s`;
 }
