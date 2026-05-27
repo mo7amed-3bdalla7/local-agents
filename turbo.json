@@ -15,7 +15,8 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": []
+      "outputs": [],
+      "passThroughEnv": ["DATABASE_URL"]
     },
     "dev": {
       "cache": false,
