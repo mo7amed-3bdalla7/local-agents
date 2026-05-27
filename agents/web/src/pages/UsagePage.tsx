@@ -4,7 +4,7 @@ import { BarChart3 } from "lucide-react";
 import { api } from "../api.ts";
 import { EmptyState } from "../components/EmptyState.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
-import { ErrorBox } from "./AgentsList.tsx";
+import { ErrorBox } from "../components/ErrorBox.tsx";
 
 const WINDOWS = [
   { label: "7 days", days: 7 },

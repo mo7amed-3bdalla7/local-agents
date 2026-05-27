@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bot, ChevronRight, FileCode2, Plus } from "lucide-react";
 import { api } from "../api.ts";
 import { EmptyState } from "../components/EmptyState.tsx";
+import { ErrorBox } from "../components/ErrorBox.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
 
 export function AgentsList() {
@@ -126,10 +127,3 @@ function Skeleton() {
   );
 }
 
-export function ErrorBox({ error }: { error: unknown }) {
-  return (
-    <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-      {error instanceof Error ? error.message : String(error)}
-    </div>
-  );
-}

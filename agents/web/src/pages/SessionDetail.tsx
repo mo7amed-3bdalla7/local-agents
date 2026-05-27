@@ -6,7 +6,7 @@ import { api, type SessionEvent } from "../api.ts";
 import { EventCard } from "../components/EventCard.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
 import { StatusBadge } from "../components/StatusBadge.tsx";
-import { ErrorBox } from "./AgentsList.tsx";
+import { ErrorBox } from "../components/ErrorBox.tsx";
 
 export function SessionDetail() {
   const { id = "" } = useParams();

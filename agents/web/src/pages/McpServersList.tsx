@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, Plus, Trash2, Wrench, Zap } from "lucide-rea
 import { api, type McpServer, type McpTool, type TestResult } from "../api.ts";
 import { EmptyState } from "../components/EmptyState.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
-import { ErrorBox } from "./AgentsList.tsx";
+import { ErrorBox } from "../components/ErrorBox.tsx";
 
 export function McpServersList() {
   const { data, isLoading, error } = useQuery({

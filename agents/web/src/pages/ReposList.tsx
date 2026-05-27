@@ -4,7 +4,7 @@ import { FolderGit2, Plus, Trash2 } from "lucide-react";
 import { api, type Repo } from "../api.ts";
 import { EmptyState } from "../components/EmptyState.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
-import { ErrorBox } from "./AgentsList.tsx";
+import { ErrorBox } from "../components/ErrorBox.tsx";
 
 export function ReposList() {
   const { data, isLoading, error } = useQuery({

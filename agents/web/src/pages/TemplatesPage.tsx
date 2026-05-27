@@ -13,7 +13,7 @@ import {
 } from "../api.ts";
 import { EmptyState } from "../components/EmptyState.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
-import { ErrorBox } from "./AgentsList.tsx";
+import { ErrorBox } from "../components/ErrorBox.tsx";
 
 export function TemplatesPage() {
   const { data, isLoading, error } = useQuery({

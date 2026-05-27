@@ -12,7 +12,7 @@ import {
 import { PageHeader } from "../components/PageHeader.tsx";
 import { StatusBadge } from "../components/StatusBadge.tsx";
 import { TriggerEditor } from "../components/TriggerEditor.tsx";
-import { ErrorBox } from "./AgentsList.tsx";
+import { ErrorBox } from "../components/ErrorBox.tsx";
 
 const IN_FLIGHT_STATUSES = new Set(["pending", "active"]);
 
@@ -157,9 +157,9 @@ export function AgentDetail() {
       />
 
       {runMutation.error && (
-        <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          <div className="font-medium">Run-triggering not wired yet</div>
-          <div className="mt-1 text-amber-200/80">
+        <div className="mb-6 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          <div className="font-medium">Run failed to enqueue</div>
+          <div className="mt-1 text-rose-200/80">
             {runMutation.error instanceof ApiError
               ? runMutation.error.message
               : String(runMutation.error)}

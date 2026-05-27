@@ -5,7 +5,7 @@ import { PlugZap, Plus, Trash2, Zap } from "lucide-react";
 import { api, type Connector, type TestResult } from "../api.ts";
 import { EmptyState } from "../components/EmptyState.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
-import { ErrorBox } from "./AgentsList.tsx";
+import { ErrorBox } from "../components/ErrorBox.tsx";
 
 export function ConnectorsList() {
   const { data, isLoading, error } = useQuery({

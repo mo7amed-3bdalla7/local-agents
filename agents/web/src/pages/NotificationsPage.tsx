@@ -15,7 +15,7 @@ import {
 import { EmptyState } from "../components/EmptyState.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
 import { StatusBadge } from "../components/StatusBadge.tsx";
-import { ErrorBox } from "./AgentsList.tsx";
+import { ErrorBox } from "../components/ErrorBox.tsx";
 
 const EVENT_LABELS: Record<NotificationEventName, string> = {
   run_succeeded: "Run succeeded",

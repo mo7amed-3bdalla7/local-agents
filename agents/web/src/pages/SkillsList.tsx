@@ -3,7 +3,7 @@ import { Sparkles } from "lucide-react";
 import { api } from "../api.ts";
 import { EmptyState } from "../components/EmptyState.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
-import { ErrorBox } from "./AgentsList.tsx";
+import { ErrorBox } from "../components/ErrorBox.tsx";
 
 export function SkillsList() {
   const { data, isLoading, error } = useQuery({
@@ -15,8 +15,7 @@ export function SkillsList() {
     <>
       <PageHeader
         title="Skills"
-        description="Folders with a SKILL.md. Imported from local paths or git URLs, enabled per agent."
-        actions={<AddButton />}
+        description="Filesystem-discovered SKILL.md folders. Attach per agent on the agent's detail page."
       />
       {isLoading && (
         <div className="h-16 animate-pulse rounded-lg bg-zinc-900" />
@@ -25,8 +24,10 @@ export function SkillsList() {
       {data && data.skills.length === 0 && (
         <EmptyState
           icon={Sparkles}
-          title="No skills installed"
-          description="The skill registry lands in a later commit. It will scan .claude/skills/*/SKILL.md and let you import more from git."
+          title="No skills found"
+          description={
+            "Drop a SKILL.md folder under .claude/skills/ at the repo root (or run `npx skills add owner/repo`) and restart the API server to pick it up."
+          }
         />
       )}
       {data && data.skills.length > 0 && (
@@ -51,15 +52,3 @@ export function SkillsList() {
   );
 }
 
-function AddButton() {
-  return (
-    <button
-      type="button"
-      disabled
-      title="Skill registry lands in a later commit"
-      className="cursor-not-allowed rounded-md border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-500"
-    >
-      + Import (soon)
-    </button>
-  );
-}
