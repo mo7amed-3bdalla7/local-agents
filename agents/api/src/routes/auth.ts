@@ -20,6 +20,7 @@ import {
   getUserByEmail,
   validateSession,
   verifyPassword,
+  type User,
 } from "@agents/core";
 
 export const COOKIE_NAME = "agents_session";
@@ -97,13 +98,11 @@ authRouter.post("/logout", async (c) => {
 });
 
 authRouter.get("/me", async (c) => {
-  const sid = getCookie(c, COOKIE_NAME);
-  if (!sid) return c.json({ error: "not_authenticated" }, 401);
-  const user = await validateSession(sid);
-  if (!user) {
-    deleteCookie(c, COOKIE_NAME, { path: "/" });
-    return c.json({ error: "not_authenticated" }, 401);
-  }
+  // Auth middleware has already validated the cookie or Bearer token and
+  // populated c.var.user; this route just surfaces the public profile.
+  const user = (c as unknown as { get: (k: string) => User | undefined })
+    .get("user");
+  if (!user) return c.json({ error: "not_authenticated" }, 401);
   return c.json({
     user: { id: user.id, email: user.email, name: user.name },
     signupOpen: (await countUsers()) === 0,

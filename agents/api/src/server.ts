@@ -65,10 +65,19 @@ const PORT = Number(process.env.API_PORT ?? 3848);
  * Routes that don't require auth. /healthz so health checks work without a
  * cookie; /auth/* so users can sign in.
  */
-const PUBLIC_PATHS = new Set(["/api/healthz"]);
+const PUBLIC_PATHS = new Set([
+  "/api/healthz",
+  // Auth submission endpoints have to be reachable without a session.
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/auth/signup",
+  "/api/auth/signup-open",
+]);
 function isPublicPath(path: string): boolean {
   if (PUBLIC_PATHS.has(path)) return true;
-  if (path === "/api/auth" || path.startsWith("/api/auth/")) return true;
+  // Webhook triggers are auth'd by their own HMAC signature, not the user
+  // session — external systems posting here don't carry cookies.
+  if (path.startsWith("/api/triggers/")) return true;
   return false;
 }
 
@@ -91,10 +100,10 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
 
   const api = new Hono<{ Variables: AppVariables }>();
   api.get("/healthz", (c) => c.json({ status: "ok" }));
-  api.route("/auth", authRouter);
 
-  // Auth middleware: every /api/* request except healthz + /auth/* must
-  // be authenticated. Two paths accepted:
+  // Auth middleware: every /api/* request except the explicitly-public
+  // routes (healthz + login/logout/signup) must be authenticated. Two
+  // paths accepted:
   //   1. Authorization: Bearer agt_<token>  — programmatic / CLI access
   //   2. Cookie session                     — browser UI
   // First match wins; downstream handlers read `c.var.user`.
@@ -124,6 +133,8 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
     c.set("user", user);
     return next();
   });
+
+  api.route("/auth", authRouter);
 
   // Webhook triggers — `POST /api/triggers/<path>`. The path-to-agent map is
   // populated by registerAllTriggers() at boot.
