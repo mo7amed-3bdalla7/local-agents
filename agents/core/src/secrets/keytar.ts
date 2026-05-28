@@ -4,51 +4,34 @@
  * On macOS, values go into the user's Keychain. On Linux, libsecret /
  * gnome-keyring. On Windows, Credential Vault.
  *
- * Refs are formatted `keytar:<service>:<account>`. The service is configurable
- * via AGENTS_KEYCHAIN_SERVICE so multiple installs don't collide.
+ * This module imports the keytar package eagerly, which dlopens its
+ * native binding (libsecret on Linux). When the binding isn't available
+ * (typical inside a Linux container) any consumer that imports this file
+ * will crash with ERR_DLOPEN_FAILED. The platform's secrets/index.ts
+ * loads this module via createRequire inside a try/catch so the crash is
+ * containable — but only if no static path eagerly re-exports from here.
+ * Pure ref helpers live in `keytar-ref.ts` for that reason.
  */
 
 import keytar from "keytar";
+import type { SecretsAdapter } from "./types.js";
 import {
-  MalformedKeychainRefError,
-  type SecretsAdapter,
-} from "./types.js";
+  buildKeytarRef,
+  keytarService,
+  parseKeytarRef,
+} from "./keytar-ref.js";
 
-export const DEFAULT_SERVICE = "agents-platform";
-
-function currentService(): string {
-  return process.env.AGENTS_KEYCHAIN_SERVICE ?? DEFAULT_SERVICE;
-}
-
-const PREFIX = "keytar:";
-
-export function buildKeytarRef(account: string, service?: string): string {
-  return `${PREFIX}${service ?? currentService()}:${account}`;
-}
-
-export function parseKeytarRef(ref: string): {
-  service: string;
-  account: string;
-} {
-  if (!ref.startsWith(PREFIX)) {
-    throw new MalformedKeychainRefError(ref, `${PREFIX}<service>:<account>`);
-  }
-  const rest = ref.slice(PREFIX.length);
-  // The account portion can contain ':' (e.g. 'github-pat:owner/repo'),
-  // so split only on the first separator.
-  const sep = rest.indexOf(":");
-  if (sep < 1 || sep === rest.length - 1) {
-    throw new MalformedKeychainRefError(ref, `${PREFIX}<service>:<account>`);
-  }
-  return {
-    service: rest.slice(0, sep),
-    account: rest.slice(sep + 1),
-  };
-}
+// Re-export the pure helpers so external consumers can still import them
+// from this module path (back-compat with code that grew up with one file).
+export {
+  DEFAULT_SERVICE,
+  buildKeytarRef,
+  parseKeytarRef,
+} from "./keytar-ref.js";
 
 export const keytarAdapter: SecretsAdapter = {
   async set(key, value) {
-    const service = currentService();
+    const service = keytarService();
     await keytar.setPassword(service, key, value);
     return buildKeytarRef(key, service);
   },
@@ -64,7 +47,7 @@ export const keytarAdapter: SecretsAdapter = {
   },
 
   async list() {
-    const creds = await keytar.findCredentials(currentService());
+    const creds = await keytar.findCredentials(keytarService());
     return creds.map((c) => c.account);
   },
 };

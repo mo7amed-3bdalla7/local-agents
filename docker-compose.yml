@@ -43,3 +43,39 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agents-api
+    container_name: agents-api
+    ports:
+      - "${AGENTS_PORT:-3848}:3848"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-agents}:${POSTGRES_PASSWORD:-agents}@db:5432/${POSTGRES_DB:-agents}
+      # Default admin on first boot. Override AGENTS_DEFAULT_ADMIN_PASSWORD
+      # in .env for anything non-throwaway.
+      AGENTS_DEFAULT_ADMIN_EMAIL: ${AGENTS_DEFAULT_ADMIN_EMAIL:-admin@local}
+      AGENTS_DEFAULT_ADMIN_PASSWORD: ${AGENTS_DEFAULT_ADMIN_PASSWORD:-admin}
+      AGENTS_DEFAULT_ADMIN_NAME: ${AGENTS_DEFAULT_ADMIN_NAME:-Admin}
+      # Headless secrets. AGENTS_SECRETS_KEY must persist across restarts —
+      # set it in .env or accept the auto-generated one written to
+      # /data/secrets/.master.key (which the /data volume preserves).
+      AGENTS_SECRETS_BACKEND: file
+      AGENTS_SECRETS_KEY: ${AGENTS_SECRETS_KEY:-}
+      # Claude Agent SDK auth — required for any agent run.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # GitHub auth used by gh-CLI executors (pr_create, pr_comment, etc.).
+      # Either GH_TOKEN here or run `gh auth login` once inside the
+      # container (volume-mounted via gh's config dir under /data).
+      GH_TOKEN: ${GH_TOKEN:-}
+      NODE_ENV: production
+    volumes:
+      # Persists secrets store, task workspaces, agent run logs, github
+      # poller state across container restarts.
+      - ./data/agents:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped

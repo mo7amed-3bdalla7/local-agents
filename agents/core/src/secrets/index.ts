@@ -29,7 +29,11 @@ export {
   MalformedKeychainRefError,
   UnknownBackendError,
 } from "./types.js";
-export { buildKeytarRef, parseKeytarRef } from "./keytar.js";
+// IMPORTANT: re-export from keytar-ref.js, not keytar.js. The latter eagerly
+// imports keytar's native binding, which crashes the process at module
+// load on systems without libsecret (Linux containers). The ref helpers
+// are pure string ops with no native deps.
+export { buildKeytarRef, parseKeytarRef } from "./keytar-ref.js";
 
 let _adapter: SecretsAdapter | null = null;
 

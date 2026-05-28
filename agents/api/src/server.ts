@@ -11,7 +11,9 @@
  * /api — see agents/api/src/routes/.
  */
 
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { relative, resolve } from "node:path";
 import { getRequestListener } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -269,36 +271,83 @@ async function main() {
   const app = createApp();
   const apiHandler = getRequestListener(app.fetch);
 
-  const { createServer: createViteServer } = await import("vite");
+  // Two listen paths: dev runs Vite middleware-mode for HMR; production
+  // skips Vite entirely and serves the prebuilt web bundle as static
+  // files (smaller surface, smaller container, no need for Vite at runtime).
   const webDir = resolve(workspaceRoot(), "agents", "web");
-  const vite = await createViteServer({
-    root: webDir,
-    appType: "spa",
-    server: { port: PORT, strictPort: true },
-    // Quiet Vite's own "ready in Xms" line — we log our own.
-    logLevel: "warn",
-    plugins: [
-      {
-        name: "agents-api",
-        configureServer(server) {
-          // Pre-hook: runs BEFORE Vite's transform / static / SPA middlewares.
-          // Anything under /api/* is handed to Hono; everything else falls
-          // through to Vite via next().
-          server.middlewares.use((req, res, next) => {
-            const url = req.url ?? "/";
-            if (url === "/api" || url.startsWith("/api/")) {
-              apiHandler(req, res);
-            } else {
-              next();
-            }
-          });
-        },
-      },
-    ],
-  });
+  const isProd = process.env.NODE_ENV === "production";
 
-  await vite.listen(PORT);
-  logger.info("listening", { port: PORT, url: `http://localhost:${PORT}` });
+  let stop: () => Promise<void>;
+
+  if (isProd) {
+    const webDist = resolve(webDir, "dist");
+    if (!existsSync(webDist)) {
+      throw new Error(
+        `NODE_ENV=production but ${webDist} doesn't exist. Build the web bundle first: \`pnpm web:build\`.`,
+      );
+    }
+    const indexPath = resolve(webDist, "index.html");
+    const indexHtml = await readFile(indexPath, "utf-8");
+
+    const { serve } = await import("@hono/node-server");
+    const { serveStatic } = await import("@hono/node-server/serve-static");
+    // Static under /assets and the root index, then a catch-all that
+    // serves index.html for SPA routing. The api routes are already
+    // mounted under /api by createApp().
+    app.use(
+      "/assets/*",
+      serveStatic({ root: relative(process.cwd(), webDist) }),
+    );
+    app.use(
+      "/vite.svg",
+      serveStatic({ root: relative(process.cwd(), webDist) }),
+    );
+    app.get("*", (c) => c.html(indexHtml));
+
+    const server = serve({ fetch: app.fetch, port: PORT, hostname: "0.0.0.0" });
+    logger.info("listening", {
+      port: PORT,
+      url: `http://localhost:${PORT}`,
+      mode: "production",
+    });
+    stop = () =>
+      new Promise<void>((resolve) => server.close(() => resolve()));
+  } else {
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      root: webDir,
+      appType: "spa",
+      server: { port: PORT, strictPort: true },
+      // Quiet Vite's own "ready in Xms" line — we log our own.
+      logLevel: "warn",
+      plugins: [
+        {
+          name: "agents-api",
+          configureServer(server) {
+            // Pre-hook: runs BEFORE Vite's transform / static / SPA middlewares.
+            // Anything under /api/* is handed to Hono; everything else falls
+            // through to Vite via next().
+            server.middlewares.use((req, res, next) => {
+              const url = req.url ?? "/";
+              if (url === "/api" || url.startsWith("/api/")) {
+                apiHandler(req, res);
+              } else {
+                next();
+              }
+            });
+          },
+        },
+      ],
+    });
+
+    await vite.listen(PORT);
+    logger.info("listening", {
+      port: PORT,
+      url: `http://localhost:${PORT}`,
+      mode: "dev",
+    });
+    stop = () => vite.close().catch(() => undefined) as Promise<void>;
+  }
 
   let shuttingDown = false;
   const shutdown = async () => {
@@ -307,7 +356,7 @@ async function main() {
     logger.info("shutting down");
     if (triggers) await triggers.stop();
     if (worker) await worker.stop();
-    await vite.close().catch(() => undefined);
+    await stop();
     await closeDb();
     process.exit(0);
   };
