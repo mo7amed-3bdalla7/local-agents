@@ -33,14 +33,26 @@ export function ConnectorNew() {
 
   const trimmedHost = host.replace(/\/$/, "");
   const hostValid = /^https?:\/\/.+/.test(trimmedHost);
-  const ready =
-    displayName.trim().length > 0 &&
-    hostValid &&
-    email.includes("@") &&
-    token.length > 0;
+  // First missing-field message — surfaced inline when the user clicks Save
+  // instead of silently graying the button out.
+  const missingField =
+    displayName.trim().length === 0
+      ? "Display name is required."
+      : !hostValid
+        ? "Host must start with http:// or https:// and include a hostname."
+        : !email.includes("@")
+          ? "Email must include @."
+          : token.length === 0
+            ? "API token is required."
+            : null;
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const submit = () => {
-    if (!ready) return;
+    if (missingField) {
+      setSubmitError(missingField);
+      return;
+    }
+    setSubmitError(null);
     create.mutate({
       connectorType: type,
       displayName: displayName.trim(),
@@ -136,10 +148,16 @@ export function ConnectorNew() {
           </>
         )}
 
+        {submitError && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            {submitError}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={submit}
-          disabled={!ready || create.isPending}
+          disabled={create.isPending}
           className="w-full rounded-md border border-emerald-500/60 bg-emerald-500/20 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-40"
         >
           {create.isPending ? "Creating…" : "Create connector"}
