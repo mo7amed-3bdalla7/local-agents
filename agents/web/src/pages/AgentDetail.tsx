@@ -1,6 +1,6 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { ArrowLeft, Play, Sparkles, Square, Trash2, X } from "lucide-react";
 import {
   api,
@@ -295,6 +295,8 @@ export function AgentDetail() {
               {JSON.stringify(agent.configJson, null, 2)}
             </pre>
           </Section>
+
+          <MemoryEditor agentId={agent.id} />
         </div>
       </div>
 
@@ -555,6 +557,80 @@ function isDryRun(configJson: Record<string, unknown> | null | undefined): boole
   if (!configJson || typeof configJson !== "object") return false;
   const exec = (configJson as { execution?: { dryRun?: unknown } }).execution;
   return exec?.dryRun === true;
+}
+
+// ─── Memory editor — per-agent MEMORY.md ──────────────────────────────────
+
+function MemoryEditor({ agentId }: { agentId: string }) {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ["agent", agentId, "memory"],
+    queryFn: () => api.agents.getMemory(agentId),
+  });
+  const [body, setBody] = useState("");
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (data && !dirty) setBody(data.body);
+  }, [data, dirty]);
+
+  const save = useMutation({
+    mutationFn: () => api.agents.setMemory(agentId, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["agent", agentId, "memory"],
+      });
+      setDirty(false);
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <Section title="Memory">
+        <div className="h-16 animate-pulse rounded bg-zinc-900" />
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Memory">
+      <p className="mb-1 text-xs text-zinc-500">
+        MEMORY.md — the agent's scratchpad across runs. The agent reads it at
+        run start and edits it before exiting; the worker persists changes
+        back here. {data?.updatedAt && (
+          <span className="text-zinc-400">
+            Last updated{" "}
+            {new Date(data.updatedAt).toLocaleString()}
+          </span>
+        )}
+      </p>
+      <textarea
+        value={body}
+        onChange={(e) => {
+          setBody(e.target.value);
+          setDirty(true);
+        }}
+        rows={10}
+        placeholder="(empty — the agent will start a fresh MEMORY.md in its next workspace)"
+        className="w-full rounded border border-zinc-800 bg-zinc-950 p-2 font-mono text-[11px] text-zinc-200 outline-none focus:border-emerald-500"
+      />
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => save.mutate()}
+          disabled={!dirty || save.isPending}
+          className="rounded border border-emerald-500/60 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-200 hover:bg-emerald-500/25 disabled:opacity-40"
+        >
+          {save.isPending ? "Saving…" : dirty ? "Save" : "Saved"}
+        </button>
+        {save.error && (
+          <span className="text-xs text-rose-300">
+            {save.error instanceof Error ? save.error.message : "Save failed"}
+          </span>
+        )}
+      </div>
+    </Section>
+  );
 }
 
 function maxCostUsd(

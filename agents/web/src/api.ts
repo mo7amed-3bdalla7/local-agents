@@ -75,6 +75,15 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ instruction }),
       }),
+    getMemory: (id: string) =>
+      request<{ body: string; updatedAt: string | null }>(
+        `/agents/${id}/memory`,
+      ),
+    setMemory: (id: string, body: string) =>
+      request<{ body: string; updatedAt: string | null }>(
+        `/agents/${id}/memory`,
+        { method: "PUT", body: JSON.stringify({ body }) },
+      ),
     get: (id: string) =>
       request<{
         agent: Agent;
