@@ -57,6 +57,13 @@
       "when": 1779955269507,
       "tag": "0007_volatile_yellow_claw",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779970057749,
+      "tag": "0008_sleepy_kinsey_walden",
+      "breakpoints": true
     }
   ]
 }

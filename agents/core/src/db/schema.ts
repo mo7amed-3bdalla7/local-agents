@@ -213,6 +213,24 @@ export const agents = pgTable("agents", {
 });
 
 // ---------------------------------------------------------------------------
+// User contexts — one markdown document per owner that gets materialized as
+// CONTEXT.md at the root of every task workspace. The senior-engineer
+// template instructs agents to read CONTEXT.md first; it's the place to
+// document coding style, on-call, sprint goals, glossary, etc. that should
+// apply across every repo the user touches.
+// ---------------------------------------------------------------------------
+
+export const userContexts = pgTable("user_contexts", {
+  ownerId: uuid("owner_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
 // Tasks — bundle a brief + N linked repos for a single agent run, so the
 // senior-engineer template (and similar) can navigate cross-repo context
 // without ad-hoc prompt construction. The worker materializes each linked

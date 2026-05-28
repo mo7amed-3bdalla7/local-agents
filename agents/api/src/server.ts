@@ -37,6 +37,7 @@ import { sessionsRouter } from "./routes/sessions.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { templatesRouter } from "./routes/templates.js";
 import { tokensRouter } from "./routes/tokens.js";
+import { userContextRouter } from "./routes/user-context.js";
 import { registerGitCommitPushExecutor } from "./executors/git-commit-push.js";
 import { registerGithubReviewExecutor } from "./executors/github-review.js";
 import { registerPrCommentExecutor } from "./executors/pr-comment.js";
@@ -184,6 +185,7 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
   api.route("/tokens", tokensRouter);
   api.route("/templates", templatesRouter);
   api.route("/tasks", tasksRouter);
+  api.route("/context", userContextRouter);
   app.route("/api", api);
 
   app.onError((err, c) => {

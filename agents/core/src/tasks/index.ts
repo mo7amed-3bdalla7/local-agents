@@ -17,6 +17,7 @@ import { promisify } from "node:util";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { getDb, schema } from "../db/client.js";
 import { ensureRepo } from "../repos/manager.js";
+import { getUserContext } from "../user-context/index.js";
 
 const exec = promisify(execFile);
 
@@ -196,13 +197,25 @@ export async function materializeTaskWorkspace(
     "## Instructions",
     "",
     "Each linked repo is checked out as a sibling directory at the workspace",
-    "root. Read the repos' own AGENTS.md / CLAUDE.md / README.md before",
-    "making changes; match existing conventions. Stage every commit + push",
-    "via `propose_action({kind: 'git_commit_push', ...})` — do not run",
-    "`git commit` / `git push` directly.",
+    "root. **Read CONTEXT.md at the workspace root first if present** — it",
+    "carries your owner's cross-cutting context (coding style, conventions,",
+    "sprint goals). Then read each touched repo's own AGENTS.md / CLAUDE.md",
+    "/ README.md and match existing patterns. Stage every commit + push via",
+    "`propose_action({kind: 'git_commit_push', ...})` — do not run `git",
+    "commit` / `git push` directly.",
     "",
   ].join("\n");
   await writeFile(join(root, "BRIEF.md"), briefBody, "utf-8");
+
+  // CONTEXT.md — owner's cross-cutting context. Optional; written only when
+  // the owner has set one under /context. Rewrite on every materialization
+  // so edits propagate to existing task workspaces too.
+  if (task.ownerId) {
+    const ctx = await getUserContext(task.ownerId);
+    if (ctx && ctx.body) {
+      await writeFile(join(root, "CONTEXT.md"), ctx.body, "utf-8");
+    }
+  }
 
   // Clone each linked repo locally from the central worktree clone. Fast +
   // disconnected from origin so accidental pushes can't escape.

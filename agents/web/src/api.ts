@@ -206,6 +206,14 @@ export const api = {
   capabilities: {
     list: () => request<CapabilitiesResponse>("/capabilities"),
   },
+  context: {
+    get: () => request<{ body: string; updatedAt: string | null }>("/context"),
+    set: (body: string) =>
+      request<{ body: string; updatedAt: string | null }>("/context", {
+        method: "PUT",
+        body: JSON.stringify({ body }),
+      }),
+  },
   tasks: {
     list: () => request<{ tasks: TaskWithRepos[] }>("/tasks"),
     get: (id: string) => request<{ task: TaskWithRepos }>(`/tasks/${id}`),

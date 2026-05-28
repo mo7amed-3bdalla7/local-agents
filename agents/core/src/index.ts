@@ -103,6 +103,13 @@ export {
 } from "./approvals/index.js";
 
 export {
+  deleteUserContext,
+  getUserContext,
+  setUserContext,
+  type UserContext,
+} from "./user-context/index.js";
+
+export {
   createTask,
   getTask,
   listTasks,
