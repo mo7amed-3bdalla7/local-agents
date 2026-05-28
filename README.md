@@ -21,39 +21,48 @@ agents/
 
 ## Prerequisites
 
-- Node.js **20+**
-- pnpm **9.15+** (`npm install -g pnpm`)
-- Docker (for the Postgres stack)
-- A Claude Max subscription OAuth token
+- Docker + Docker Compose
+- A Claude Max subscription OAuth token (mint with `claude setup-token`)
+- *(Only for dev mode from source)* Node.js **20+**, pnpm **9.15+**
 
-## Quick start
+## Quick start — one command
 
 ```bash
-# 1. Install
-pnpm install
-
-# 2. Env
+# 1. Env
 cp .env.example .env
-# Edit .env and set CLAUDE_CODE_OAUTH_TOKEN=<run `claude setup-token` to mint one>
+# Edit .env and set at minimum:
+#   CLAUDE_CODE_OAUTH_TOKEN=<from `claude setup-token`>
+#   AGENTS_SECRETS_KEY=$(openssl rand -base64 32)
+#   (optional) AGENTS_DEFAULT_ADMIN_PASSWORD=<something not "admin">
+#   (optional) GH_TOKEN=<a github PAT for the pr_create / git_commit_push executors>
 
-# 3. Postgres
-pnpm compose:up                                          # postgres on :5432, adminer on :8080
+# 2. Up
+docker compose up -d
+#    Brings up postgres, redis, adminer (db viewer on :8080), and the api+dashboard
+#    on :3848. The api container runs db:migrate automatically before booting.
 
-# 4. Build everything
-pnpm build
-
-# 5. Migrate the database
-pnpm db:migrate
-
-# 6. Start the platform (API + dashboard on a single port)
-pnpm api                                                 # http://localhost:3848
-
-# 7. Open the dashboard, sign in with the bootstrap admin
-#    Default user: admin@local / admin   (override via AGENTS_DEFAULT_ADMIN_PASSWORD)
+# 3. Open the dashboard
 open http://localhost:3848
+#    Sign in as admin@local / admin (or whatever you set AGENTS_DEFAULT_ADMIN_PASSWORD to).
 ```
 
+The api container bundles `git`, `gh`, `pnpm`, and the full workspace, so every executor (pr_create, git_commit_push, shell_command, pr_comment, github_review, slack_message) and every CLI agents shell out to (`pnpm -w jira`, `gh pr review`) works inside the container. Secrets live AES-GCM-encrypted under `./data/agents/secrets/`. Task workspaces under `./data/agents/workspaces/`. Both survive `docker compose down`.
+
 Click into `pr-reviewer` and hit **Run now**. The session-detail page streams events live over SSE.
+
+### From source (dev mode)
+
+For HMR on the web bundle and tsx-watch on the api:
+
+```bash
+pnpm install
+pnpm build
+pnpm compose:up                       # just postgres / redis / adminer
+DATABASE_URL=postgres://agents:agents@localhost:5432/agents pnpm db:migrate
+DATABASE_URL=postgres://agents:agents@localhost:5432/agents pnpm api
+```
+
+On macOS the dev mode picks up keytar automatically (secrets land in the OS Keychain). Inside the container the file-backed adapter is used unconditionally so secrets survive restarts.
 
 ## Authentication, in two layers
 
