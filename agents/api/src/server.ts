@@ -31,6 +31,7 @@ import { agentsRouter } from "./routes/agents.js";
 import { agentsGenerateRouter } from "./routes/agents-generate.js";
 import { agentsRefineRouter } from "./routes/agents-refine.js";
 import { approvalsRouter } from "./routes/approvals.js";
+import { capabilitiesRouter } from "./routes/capabilities.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { sessionsRouter } from "./routes/sessions.js";
 import { tasksRouter } from "./routes/tasks.js";
@@ -177,6 +178,7 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
   api.route("/pr-activity", prActivityRouter);
   api.route("/usage", usageRouter);
   api.route("/approvals", approvalsRouter);
+  api.route("/capabilities", capabilitiesRouter);
   api.route("/notifications", notificationsRouter);
   api.route("/tokens", tokensRouter);
   api.route("/templates", templatesRouter);

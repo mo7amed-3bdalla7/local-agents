@@ -18,6 +18,7 @@ import { ReposList } from "./pages/ReposList.tsx";
 import { RepoNew } from "./pages/RepoNew.tsx";
 import { UsagePage } from "./pages/UsagePage.tsx";
 import { ApprovalsList } from "./pages/ApprovalsList.tsx";
+import { CapabilitiesPage } from "./pages/CapabilitiesPage.tsx";
 import { NotificationsPage } from "./pages/NotificationsPage.tsx";
 import { TasksPage, TaskDetailRoute } from "./pages/TasksPage.tsx";
 import { TemplatesPage } from "./pages/TemplatesPage.tsx";
@@ -69,6 +70,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="repos/new" element={<RepoNew />} />
               <Route path="pr-activity" element={<PrActivityList />} />
               <Route path="approvals" element={<ApprovalsList />} />
+              <Route path="capabilities" element={<CapabilitiesPage />} />
               <Route path="notifications" element={<NotificationsPage />} />
               <Route path="tokens" element={<TokensPage />} />
               <Route path="usage" element={<UsagePage />} />

@@ -203,6 +203,9 @@ export const api = {
     get: (days?: number) =>
       request<Usage>(`/usage${days != null ? `?days=${days}` : ""}`),
   },
+  capabilities: {
+    list: () => request<CapabilitiesResponse>("/capabilities"),
+  },
   tasks: {
     list: () => request<{ tasks: TaskWithRepos[] }>("/tasks"),
     get: (id: string) => request<{ task: TaskWithRepos }>(`/tasks/${id}`),
@@ -296,6 +299,37 @@ export const api = {
       }),
   },
 };
+
+export interface FieldSpec {
+  name: string;
+  type: string;
+  required?: boolean;
+  description: string;
+}
+
+export interface ExecutorSpec {
+  kind: string;
+  category: string;
+  description: string;
+  payload: FieldSpec[];
+  example: Record<string, unknown>;
+  notes?: string;
+  registered: boolean;
+}
+
+export interface SenderSpec {
+  kind: string;
+  description: string;
+  config: FieldSpec[];
+  secret?: string;
+  exampleConfig: Record<string, unknown>;
+  registered: boolean;
+}
+
+export interface CapabilitiesResponse {
+  executors: ExecutorSpec[];
+  senders: SenderSpec[];
+}
 
 export interface TaskWithRepos {
   id: string;
