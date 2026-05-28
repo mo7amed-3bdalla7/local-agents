@@ -92,9 +92,11 @@ Config persists at `~/.config/agents/config.json` (0600). Override at runtime wi
 |---|---|
 | **Agents** | All visible agents, source badge (file/db), a **DRY RUN** badge if mutating tools are stripped, **Run now** + **Refine with AI** buttons on the detail page |
 | **Templates** | Pre-built recipes you can Clone into your own db-source agents. Includes `senior-engineer`, `pr-review-lite`, `daily-digest`, `jira-triage-lite` |
-| **Tasks** | Bundle a brief + N linked repos for a single agent run. The platform clones each linked repo into a shared workspace dir + writes `BRIEF.md` at the root; the agent runs with that as `cwd` |
+| **Tasks** | Bundle a brief + N linked repos for a single agent run. The platform clones each linked repo into a shared workspace dir + writes `BRIEF.md` + (optional) `CONTEXT.md` at the root; the agent runs with that as `cwd` |
+| **Context** | Single per-owner markdown doc materialized as `CONTEXT.md` at the root of every task workspace. The place for coding style, on-call, sprint goals, glossary — anything that should apply across every repo. Edit, save; next task picks it up |
 | **Sessions** | Filterable list (status chips, agent, date range — URL-state-driven) + per-session live event timeline (typed cards) |
-| **Approvals** | Side-effecting actions agents have proposed (PR comments, Slack messages, …) waiting for human approval. Tabs for Pending / Executed / Rejected / Failed |
+| **Approvals** | Side-effecting actions agents have proposed waiting for human approval. Tabs for Pending / Executed / Rejected / Failed |
+| **Capabilities** | Self-documenting surface: every registered executor (with payload field tables + example JSON) and every notification sender. Discovery for users authoring agent prompts |
 | **Notifications** | Channels (console, webhook, slack), Subscriptions matrix (events × channels), Deliveries audit log |
 | **Connectors / Skills / MCP servers / Repos** | Registries with CRUD + Test buttons |
 | **API tokens** | Mint (plaintext shown once), revoke, see last-used |
@@ -112,7 +114,7 @@ Defined in each agent's `agent.config.ts` and registered automatically when the 
 | **cron** | `{type:"cron", schedule:"0 9 * * *", timezone?, skipIfRunning?}` | node-cron, agent-side timezone aware |
 | **webhook** | `{type:"webhook", path?, secret?, passBody?}` | `POST /api/triggers/<path>`, HMAC-SHA256 verified, exempt from user auth |
 | **file** | `{type:"file", patterns:["src/**/*.ts"], debounceMs?}` | chokidar (polling on macOS) |
-| **github** | `{type:"github", repo:"owner/name", events:["pr:opened",…]}` | gh CLI poller, state-diffed across cycles |
+| **github** | `{type:"github", repo:"owner/name", events:["pr:opened",…], materializeTask?:boolean}` | gh CLI poller, state-diffed across cycles. `materializeTask:true` on a PR event auto-creates a task with the PR branch checked out (see Tasks below) |
 | **agent** | `{type:"agent", source:"upstream-name", onSuccess?, onFailure?}` | pipeline — fires downstream on completion |
 
 Cycles in inter-agent pipelines are detected at startup and logged.
@@ -121,9 +123,16 @@ Cycles in inter-agent pipelines are detected at startup and logged.
 
 **Approvals**: agents stage side-effecting actions via a built-in MCP tool `propose_action({kind, title, description, payload})`. Each action lands in `pending_actions` with `status=pending`; a human approves in the UI, the registered executor for that `kind` runs synchronously and writes back `executed` or `failed` with the result/error.
 
-Shipped executors:
-- `pr_comment` — `gh pr comment <num> --repo owner/name --body …`
-- `slack_message` — posts via the owner's `slack` notification channel
+Shipped executors (see [/capabilities](http://localhost:3848/capabilities) for live schemas):
+
+| Kind | Category | What it does |
+|---|---|---|
+| `pr_comment` | github | `gh pr comment <num> --body …` |
+| `pr_create` | github | `gh pr create --head <branch> --title --body` — opens the PR after a commit branch is pushed |
+| `github_review` | github | `gh pr review --<event> --body …` (`approve` / `request_changes` / `comment`) |
+| `git_commit_push` | github | Stages files, commits, pushes from the task workspace → central clone → github. Only runs on task-bound actions |
+| `shell_command` | workspace | `bash -c <cmd>` in the task workspace. cwd is confined; path-escape attempts reject before exec |
+| `slack_message` | messaging | Posts via the owner's `slack` notification channel |
 
 **Notifications**: `dispatchEvent({ownerId, event, …})` fans out to every enabled subscribed channel. Events: `run_succeeded | run_failed | approval_pending | approval_failed`. Senders are pluggable — shipped: `console`, `webhook` (HMAC-signed JSON POST), `slack` (incoming webhook).
 
@@ -134,22 +143,48 @@ Adding a new executor or sender is a single file + one `registerExecutor` / `reg
 A **task** bundles a free-form brief and N linked repos into a single agent invocation. Use it when you want one requirement that spans multiple codebases — "migrate the auth layer", "bump the shared schema in every consumer", "draft the README updates for these three services". The platform handles the cross-repo plumbing so the agent gets a clean workspace and well-structured context.
 
 **Workflow:**
-1. **Pick or clone an agent.** The shipped `senior-engineer` template under [/templates](http://localhost:3848/templates) is built for this — Opus, 30-turn budget, $5 cost cap, system prompt that says "read project conventions first, minimal diffs, run tests, stage every commit via `propose_action`."
-2. **Create the task at [/tasks](http://localhost:3848/tasks)** with: title, brief (markdown ok), agent, repo multiselect.
-3. **The platform materializes a workspace** at `$HOME/.agents/workspaces/<task-id>/` (override with `AGENTS_WORKSPACE_ROOT`):
+1. **Set your context (once, persistent).** Open [/context](http://localhost:3848/context) and write the cross-cutting things that should apply across every repo: coding style, on-call rotation, sprint goals, glossary. This becomes `CONTEXT.md` at the root of every task workspace you create.
+2. **Pick or clone an agent.** The shipped `senior-engineer` template under [/templates](http://localhost:3848/templates) is built for this — Opus, 30-turn budget, $5 cost cap, system prompt that says "read CONTEXT.md and BRIEF.md first, follow project conventions, minimal diffs, run tests, stage every commit + PR via `propose_action`."
+3. **Create the task at [/tasks](http://localhost:3848/tasks)** with: title, brief (markdown ok), agent, repo multiselect. Or skip the form — wire a github trigger with `materializeTask:true` so an incoming `pr:opened` / `pr:reviewed` event auto-creates a task pre-checked-out on the PR branch.
+4. **The platform materializes a workspace** at `$HOME/.agents/workspaces/<task-id>/` (override with `AGENTS_WORKSPACE_ROOT`):
    ```
    workspaces/<task-id>/
-   ├── BRIEF.md                       ← your brief, rendered with linked-repo metadata
+   ├── CONTEXT.md                     ← your /context body (when set)
+   ├── BRIEF.md                       ← this task's brief + linked-repo metadata
    ├── owner__repo-a/                 ← fresh local clone of repo A's default branch
    └── owner__repo-b/                 ← fresh local clone of repo B's default branch
    ```
-   Clones are local-clones from the central worktree dir (fast — hardlinks where possible) and disconnected from origin, so accidental pushes can't escape.
-4. **The agent runs with that workspace as `cwd`.** It can `ls` to discover the linked repos, read each one's own `AGENTS.md` / `CLAUDE.md` / `README.md` for conventions, and edit across them.
-5. **Commits + pushes always go through `propose_action`.** The senior-engineer template instructs the agent to call `propose_action({kind: "git_commit_push", payload: { repo, branch, message, files }})` for every commit. A human reviews on the Approvals page before any change reaches a real remote. Direct `git commit` / `git push` from the agent is a contract violation.
+   Clones are local-clones from the central worktree dir (fast — hardlinks where possible) and disconnected from origin, so accidental pushes can't escape. When the task was bridged from a github PR trigger, the linked repo is already checked out on the PR's head branch.
+5. **The agent runs with that workspace as `cwd`.** It reads CONTEXT.md → BRIEF.md → each touched repo's own `AGENTS.md`/`CLAUDE.md`/`README.md`, in that order.
+6. **Commits, PRs, reviews always go through `propose_action`.** The senior-engineer template instructs the agent to stage every side effect for human approval:
+   - `propose_action({kind: "git_commit_push", payload: { repo, branch, message, files }})` to commit + push a branch
+   - `propose_action({kind: "pr_create", payload: { repo, head, base, title, body }})` to open the PR
+   - `propose_action({kind: "github_review", ... })` / `propose_action({kind: "pr_comment", ... })` to respond to a review
+   - `propose_action({kind: "shell_command", payload: { cmd } })` to run tests/builds in the workspace before staging anything
+   A human reviews on the Approvals page before any change reaches a real remote. Direct `git commit` / `git push` / `gh pr create` from the agent is a contract violation.
 
-**Branch policy.** Tasks currently link repos at their default branch. The senior-engineer can create local branches inside the workspace via `Bash` if needed; the approval flow captures the intended branch in the action payload.
+**Three layers of context.** A task agent sees three docs, smallest scope wins on project-specific patterns:
+
+| Layer | Scope | Source | Lives at |
+|---|---|---|---|
+| `CONTEXT.md` | Per owner (cross-cutting) | `/context` UI | Workspace root |
+| `BRIEF.md` | Per task (this requirement) | task `brief` field | Workspace root |
+| `AGENTS.md` / `CLAUDE.md` / `README.md` | Per repo (project conventions) | the repo itself | Each repo dir |
+
+**Branch policy.** Tasks link repos at their default branch by default. The senior-engineer can target a different branch in the `git_commit_push` payload; the github→task bridge pre-checks-out the PR's head branch when the trigger fires with `materializeTask:true`.
 
 **Task lifecycle.** `pending → active → completed | failed`. The detail page polls 3s while in-flight, 10s otherwise. Workspaces are left on disk after the task finishes for inspection; clean up with `rm -rf $HOME/.agents/workspaces/<task-id>` when you're done.
+
+## Real-world workflows
+
+The four most common ways to use this platform:
+
+| Goal | Path |
+|---|---|
+| **Verify a Jira ticket against code** (single or multi-repo, output open questions + impact) | Task with brief = "Verify JIRA-123 against the linked repos, list open questions and impact" → senior-engineer (with jira connector attached so it can `pnpm jira issue get` via Bash). Read-only — no `propose_action` calls. |
+| **Develop a Jira ticket → open PR(s)** | Task with brief = the ticket body, linked repos = the codebases in scope → senior-engineer → `git_commit_push` per repo → `pr_create` per repo. Every step human-approved. |
+| **Address review feedback on my PR + push fix locally** | Github trigger with `events:["pr:reviewed"]` + `materializeTask:true` on an owned agent. Trigger auto-creates a task pre-checked-out on the PR branch with review comments in BRIEF.md. Agent reads, fixes, `git_commit_push({branch: <PR head>})`. |
+| **Review other team members' PRs** | Use `pr-incoming-review` (file-source agent in this repo). Fill in `repos` in its `agent.config.ts`, restart, `gh auth login`. The github poller fires on `pr:opened`/`synchronize`/`reopened`; the agent reviews, stages the verdict via `propose_action({kind:"github_review"})`. |
 
 ## Creating a new agent
 
