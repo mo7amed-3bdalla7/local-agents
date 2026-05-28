@@ -95,7 +95,7 @@ Config persists at `~/.config/agents/config.json` (0600). Override at runtime wi
 
 ## Dashboard tour
 
-`pnpm api` boots everything on `http://localhost:3848`:
+Whichever path you took above (`docker compose up -d` or `pnpm api` from source), everything lives on `http://localhost:3848`:
 
 | Page | What it shows |
 |---|---|
@@ -224,15 +224,30 @@ Node's built-in test runner via tsx. Today the suite covers password hashing, to
 
 ## Commands
 
+### Docker (the default path)
+
+```bash
+docker compose up -d                                    # whole platform: postgres + api+UI on :3848 + adminer on :8080
+docker compose down                                     # stop everything (volume at ./data/agents/ persists)
+docker compose down -v                                  # also drop the volume — full reset
+docker compose logs -f api                              # tail api logs (request/response, run lifecycle)
+docker compose build api                                # rebuild after a code change (~30s)
+docker compose up -d --no-deps --build api              # rebuild + restart just api, keep db running
+docker compose exec api sh                              # shell into the running api container
+docker compose exec api pnpm -w jira issue search ...   # invoke a workspace CLI inside the container
+```
+
+### From source (dev mode)
+
 ```bash
 # Infrastructure
-pnpm compose:up | compose:down | compose:logs           # Postgres
+pnpm compose:up | compose:down | compose:logs           # Postgres only
 pnpm db:migrate                                          # Drizzle migrations
 
 # Platform
-pnpm api                                                 # API + UI, port 3848
+pnpm api                                                 # API + UI with Vite HMR, port 3848
 pnpm web                                                 # standalone web dev (rare; UI is mounted in api)
-pnpm cli <command>                                       # talk to the API as a user
+pnpm cli <command>                                       # talk to the API as a user (mint a token at /tokens first)
 
 # Build / typecheck / test
 pnpm build | check-types | test
