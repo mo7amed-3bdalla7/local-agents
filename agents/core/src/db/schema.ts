@@ -220,6 +220,34 @@ export const agents = pgTable("agents", {
 // apply across every repo the user touches.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Agent memory — per (owner, agent) markdown scratchpad. Materialized as
+// MEMORY.md at the workspace root for task-bound runs; the agent can read
+// it at run start and edit it via Edit/Write before ending. The worker
+// reads the file back and persists changes after the run finishes.
+//
+// Single row per (owner_id, agent_id). One scratchpad per agent per user.
+// ---------------------------------------------------------------------------
+
+export const agentMemory = pgTable(
+  "agent_memory",
+  {
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    body: text("body").notNull().default(""),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.ownerId, t.agentId] }),
+  }),
+);
+
 export const userContexts = pgTable("user_contexts", {
   ownerId: uuid("owner_id")
     .primaryKey()

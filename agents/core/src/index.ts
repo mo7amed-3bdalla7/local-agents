@@ -103,6 +103,13 @@ export {
 } from "./approvals/index.js";
 
 export {
+  deleteAgentMemory,
+  getAgentMemory,
+  setAgentMemory,
+  type AgentMemory,
+} from "./agent-memory/index.js";
+
+export {
   deleteUserContext,
   getUserContext,
   setUserContext,

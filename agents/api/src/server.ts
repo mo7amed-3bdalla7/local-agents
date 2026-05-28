@@ -30,6 +30,7 @@ import { authRouter, COOKIE_NAME } from "./routes/auth.js";
 import { agentsRouter } from "./routes/agents.js";
 import { agentsGenerateRouter } from "./routes/agents-generate.js";
 import { agentsRefineRouter } from "./routes/agents-refine.js";
+import { agentMemoryRouter } from "./routes/agent-memory.js";
 import { approvalsRouter } from "./routes/approvals.js";
 import { capabilitiesRouter } from "./routes/capabilities.js";
 import { notificationsRouter } from "./routes/notifications.js";
@@ -170,6 +171,7 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
   // agents router; mount BEFORE it so the path is resolved before the
   // PATCH/DELETE /:id handlers swallow it.
   api.route("/agents", agentsRefineRouter);
+  api.route("/agents", agentMemoryRouter);
   api.route("/agents", agentsRouter);
   api.route("/sessions", sessionsRouter);
   api.route("/runs", runsRouter);

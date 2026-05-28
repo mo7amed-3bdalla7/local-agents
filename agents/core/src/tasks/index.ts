@@ -18,6 +18,7 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { getDb, schema } from "../db/client.js";
 import { ensureRepo } from "../repos/manager.js";
 import { getUserContext } from "../user-context/index.js";
+import { getAgentMemory } from "../agent-memory/index.js";
 
 const exec = promisify(execFile);
 
@@ -197,12 +198,15 @@ export async function materializeTaskWorkspace(
     "## Instructions",
     "",
     "Each linked repo is checked out as a sibling directory at the workspace",
-    "root. **Read CONTEXT.md at the workspace root first if present** — it",
-    "carries your owner's cross-cutting context (coding style, conventions,",
-    "sprint goals). Then read each touched repo's own AGENTS.md / CLAUDE.md",
-    "/ README.md and match existing patterns. Stage every commit + push via",
+    "root. **Read CONTEXT.md** (owner-wide context) and **MEMORY.md** (your",
+    "own scratchpad from prior runs) at the workspace root first if present.",
+    "Then read each touched repo's own AGENTS.md / CLAUDE.md / README.md and",
+    "match existing patterns. Stage every commit + push via",
     "`propose_action({kind: 'git_commit_push', ...})` — do not run `git",
-    "commit` / `git push` directly.",
+    "commit` / `git push` directly. Before exiting, update MEMORY.md with",
+    "any insights worth carrying forward (open questions, things you learned",
+    "about the codebase, pending decisions). The platform reads MEMORY.md",
+    "back and persists it across runs.",
     "",
   ].join("\n");
   await writeFile(join(root, "BRIEF.md"), briefBody, "utf-8");
@@ -215,6 +219,25 @@ export async function materializeTaskWorkspace(
     if (ctx && ctx.body) {
       await writeFile(join(root, "CONTEXT.md"), ctx.body, "utf-8");
     }
+  }
+
+  // MEMORY.md — agent's per-owner scratchpad from previous runs. Written
+  // even when empty so the agent always has somewhere to append to;
+  // worker reads it back after the run and persists changes.
+  if (task.ownerId) {
+    const mem = await getAgentMemory(task.ownerId, task.agentId);
+    const body =
+      mem?.body ??
+      [
+        "# Agent memory",
+        "",
+        "Use this file to carry notes across runs — open questions, things you",
+        "learned about the codebase, decisions to revisit. The platform persists",
+        "edits you make here after the run finishes. Keep it focused; trim old",
+        "entries when they go stale.",
+        "",
+      ].join("\n");
+    await writeFile(join(root, "MEMORY.md"), body, "utf-8");
   }
 
   // Clone each linked repo locally from the central worktree clone. Fast +

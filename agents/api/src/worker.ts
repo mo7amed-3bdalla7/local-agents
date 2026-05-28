@@ -19,7 +19,16 @@ import {
   type RunEvent,
   type TriggerContext,
 } from "@agents/sdk";
-import { dispatchEvent, getDb, schema, setTaskStatus } from "@agents/core";
+import {
+  dispatchEvent,
+  getAgentMemory,
+  getDb,
+  schema,
+  setAgentMemory,
+  setTaskStatus,
+} from "@agents/core";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { loadDbAgent } from "./db-agents.js";
 import { getAgent } from "./registry.js";
 import { fireAgentPipeline } from "./triggers/agent-pipeline.js";
@@ -427,6 +436,36 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
             error: String(err),
           }),
         );
+      }
+
+      // Persist agent memory: if the run was task-bound and the workspace
+      // has a MEMORY.md, read it back and save when the body changed.
+      // No approval gate — memory is the agent's own scratchpad, not a
+      // side effect. Errors are logged and swallowed.
+      if (taskId && workspacePath && agentRow.ownerId) {
+        try {
+          const memoryPath = join(workspacePath, "MEMORY.md");
+          const newBody = (await readFile(memoryPath, "utf-8")).trim();
+          const existing = await getAgentMemory(
+            agentRow.ownerId,
+            run.agentId,
+          );
+          if ((existing?.body ?? "").trim() !== newBody) {
+            await setAgentMemory(agentRow.ownerId, run.agentId, newBody);
+            logger.info("agent memory persisted", {
+              agentId: run.agentId,
+              bytes: newBody.length,
+            });
+          }
+        } catch (err) {
+          // ENOENT (no MEMORY.md) is fine; anything else worth a warn.
+          if ((err as { code?: string }).code !== "ENOENT") {
+            logger.warn("agent memory write-back failed", {
+              agentId: run.agentId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
       }
 
       // Notifications: fire run_succeeded / run_failed for the agent owner.
