@@ -36,6 +36,7 @@ import { sessionsRouter } from "./routes/sessions.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { templatesRouter } from "./routes/templates.js";
 import { tokensRouter } from "./routes/tokens.js";
+import { registerGitCommitPushExecutor } from "./executors/git-commit-push.js";
 import { registerPrCommentExecutor } from "./executors/pr-comment.js";
 import { registerSlackMessageExecutor } from "./executors/slack-message.js";
 import { registerConsoleSender } from "./senders/console.js";
@@ -224,6 +225,7 @@ async function main() {
   // synchronously. New action kinds register here.
   registerPrCommentExecutor();
   registerSlackMessageExecutor();
+  registerGitCommitPushExecutor();
 
   // Register notification senders. New transports plug in here.
   registerConsoleSender();
