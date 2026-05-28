@@ -56,6 +56,43 @@ const EXECUTOR_SPECS: ExecutorSpec[] = [
     },
   },
   {
+    kind: "pr_create",
+    category: "github",
+    description:
+      "Open a new PR via `gh pr create`. The senior-engineer pairs this with git_commit_push: push the branch first, then propose this kind to actually open the PR through the same approval gate.",
+    payload: [
+      { name: "repo", type: "string", required: true, description: "owner/name." },
+      {
+        name: "head",
+        type: "string",
+        required: true,
+        description: "Branch with the changes (the one git_commit_push pushed).",
+      },
+      {
+        name: "base",
+        type: "string",
+        description: "Target branch. Defaults to the repo's default branch.",
+      },
+      { name: "title", type: "string", required: true, description: "PR title." },
+      { name: "body", type: "string", required: true, description: "PR description (markdown)." },
+      {
+        name: "draft",
+        type: "boolean",
+        description: "Open as a draft PR. Defaults to false.",
+      },
+    ],
+    example: {
+      repo: "anthropics/sdk",
+      head: "fix/credential-fallback",
+      base: "main",
+      title: "Fix credential helper env-var fallback",
+      body: "## Summary\n\nThe credential helper missed the env-var path.\n\n## Test plan\n\n- [x] pnpm test passes\n- [ ] manual smoke against staging",
+      draft: false,
+    },
+    notes:
+      "Returns {prUrl, prNumber} parsed from gh's stdout, so the approvals card surfaces the new PR link directly.",
+  },
+  {
     kind: "github_review",
     category: "github",
     description:

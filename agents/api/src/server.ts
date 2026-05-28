@@ -40,6 +40,7 @@ import { tokensRouter } from "./routes/tokens.js";
 import { registerGitCommitPushExecutor } from "./executors/git-commit-push.js";
 import { registerGithubReviewExecutor } from "./executors/github-review.js";
 import { registerPrCommentExecutor } from "./executors/pr-comment.js";
+import { registerPrCreateExecutor } from "./executors/pr-create.js";
 import { registerShellCommandExecutor } from "./executors/shell-command.js";
 import { registerSlackMessageExecutor } from "./executors/slack-message.js";
 import { registerConsoleSender } from "./senders/console.js";
@@ -228,6 +229,7 @@ async function main() {
   // Register action executors so approve calls can dispatch them
   // synchronously. New action kinds register here.
   registerPrCommentExecutor();
+  registerPrCreateExecutor();
   registerSlackMessageExecutor();
   registerGitCommitPushExecutor();
   registerGithubReviewExecutor();
