@@ -203,6 +203,17 @@ export const api = {
     get: (days?: number) =>
       request<Usage>(`/usage${days != null ? `?days=${days}` : ""}`),
   },
+  tasks: {
+    list: () => request<{ tasks: TaskWithRepos[] }>("/tasks"),
+    get: (id: string) => request<{ task: TaskWithRepos }>(`/tasks/${id}`),
+    create: (args: CreateTaskArgs) =>
+      request<{ task: TaskWithRepos; runId: number }>("/tasks", {
+        method: "POST",
+        body: JSON.stringify(args),
+      }),
+    remove: (id: string) =>
+      request<unknown>(`/tasks/${id}`, { method: "DELETE" }),
+  },
   templates: {
     list: () => request<{ templates: AgentTemplate[] }>("/templates"),
     get: (slug: string) =>
@@ -285,6 +296,34 @@ export const api = {
       }),
   },
 };
+
+export interface TaskWithRepos {
+  id: string;
+  ownerId: string;
+  agentId: string;
+  title: string;
+  brief: string;
+  status: "pending" | "active" | "completed" | "failed" | "aborted";
+  workspacePath: string | null;
+  runId: number | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  repos: Array<{
+    repoId: string;
+    githubFullName: string;
+    defaultBranch: string;
+    localPath: string;
+    position: number;
+  }>;
+}
+
+export interface CreateTaskArgs {
+  agentId: string;
+  title: string;
+  brief: string;
+  repoIds: string[];
+}
 
 export interface AgentTemplate {
   id: string;
