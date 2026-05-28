@@ -65,6 +65,11 @@ export const api = {
   agents: {
     list: () => request<{ agents: AgentSummary[] }>("/agents"),
     stats: (id: string) => request<AgentStatsResponse>(`/agents/${id}/stats`),
+    generate: (description: string) =>
+      request<{ draft: GeneratedAgentDraft }>("/agents/generate", {
+        method: "POST",
+        body: JSON.stringify({ description }),
+      }),
     get: (id: string) =>
       request<{
         agent: Agent;
@@ -428,6 +433,14 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+}
+
+export interface GeneratedAgentDraft {
+  name: string;
+  description: string;
+  systemPrompt: string;
+  configJson: Record<string, unknown>;
+  recommendedConnectors?: string[];
 }
 
 export interface AgentSummary {

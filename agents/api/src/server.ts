@@ -28,6 +28,7 @@ import {
 } from "@agents/core";
 import { authRouter, COOKIE_NAME } from "./routes/auth.js";
 import { agentsRouter } from "./routes/agents.js";
+import { agentsGenerateRouter } from "./routes/agents-generate.js";
 import { approvalsRouter } from "./routes/approvals.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { sessionsRouter } from "./routes/sessions.js";
@@ -154,6 +155,9 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
     });
     return c.json(result.body, result.status);
   });
+  // Generate must mount BEFORE /agents to avoid the catch-all "/:id" route
+  // matching "/generate" as an id lookup.
+  api.route("/agents/generate", agentsGenerateRouter);
   api.route("/agents", agentsRouter);
   api.route("/sessions", sessionsRouter);
   api.route("/runs", runsRouter);
