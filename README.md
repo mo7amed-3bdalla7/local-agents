@@ -90,7 +90,9 @@ Config persists at `~/.config/agents/config.json` (0600). Override at runtime wi
 
 | Page | What it shows |
 |---|---|
-| **Agents** | All visible agents, source badge (file/db), a **DRY RUN** badge if mutating tools are stripped, **Run now** button on the detail page |
+| **Agents** | All visible agents, source badge (file/db), a **DRY RUN** badge if mutating tools are stripped, **Run now** + **Refine with AI** buttons on the detail page |
+| **Templates** | Pre-built recipes you can Clone into your own db-source agents. Includes `senior-engineer`, `pr-review-lite`, `daily-digest`, `jira-triage-lite` |
+| **Tasks** | Bundle a brief + N linked repos for a single agent run. The platform clones each linked repo into a shared workspace dir + writes `BRIEF.md` at the root; the agent runs with that as `cwd` |
 | **Sessions** | Filterable list (status chips, agent, date range — URL-state-driven) + per-session live event timeline (typed cards) |
 | **Approvals** | Side-effecting actions agents have proposed (PR comments, Slack messages, …) waiting for human approval. Tabs for Pending / Executed / Rejected / Failed |
 | **Notifications** | Channels (console, webhook, slack), Subscriptions matrix (events × channels), Deliveries audit log |
@@ -126,6 +128,28 @@ Shipped executors:
 **Notifications**: `dispatchEvent({ownerId, event, …})` fans out to every enabled subscribed channel. Events: `run_succeeded | run_failed | approval_pending | approval_failed`. Senders are pluggable — shipped: `console`, `webhook` (HMAC-signed JSON POST), `slack` (incoming webhook).
 
 Adding a new executor or sender is a single file + one `registerExecutor` / `registerSender` call at startup.
+
+## Tasks + senior engineer
+
+A **task** bundles a free-form brief and N linked repos into a single agent invocation. Use it when you want one requirement that spans multiple codebases — "migrate the auth layer", "bump the shared schema in every consumer", "draft the README updates for these three services". The platform handles the cross-repo plumbing so the agent gets a clean workspace and well-structured context.
+
+**Workflow:**
+1. **Pick or clone an agent.** The shipped `senior-engineer` template under [/templates](http://localhost:3848/templates) is built for this — Opus, 30-turn budget, $5 cost cap, system prompt that says "read project conventions first, minimal diffs, run tests, stage every commit via `propose_action`."
+2. **Create the task at [/tasks](http://localhost:3848/tasks)** with: title, brief (markdown ok), agent, repo multiselect.
+3. **The platform materializes a workspace** at `$HOME/.agents/workspaces/<task-id>/` (override with `AGENTS_WORKSPACE_ROOT`):
+   ```
+   workspaces/<task-id>/
+   ├── BRIEF.md                       ← your brief, rendered with linked-repo metadata
+   ├── owner__repo-a/                 ← fresh local clone of repo A's default branch
+   └── owner__repo-b/                 ← fresh local clone of repo B's default branch
+   ```
+   Clones are local-clones from the central worktree dir (fast — hardlinks where possible) and disconnected from origin, so accidental pushes can't escape.
+4. **The agent runs with that workspace as `cwd`.** It can `ls` to discover the linked repos, read each one's own `AGENTS.md` / `CLAUDE.md` / `README.md` for conventions, and edit across them.
+5. **Commits + pushes always go through `propose_action`.** The senior-engineer template instructs the agent to call `propose_action({kind: "git_commit_push", payload: { repo, branch, message, files }})` for every commit. A human reviews on the Approvals page before any change reaches a real remote. Direct `git commit` / `git push` from the agent is a contract violation.
+
+**Branch policy.** Tasks currently link repos at their default branch. The senior-engineer can create local branches inside the workspace via `Bash` if needed; the approval flow captures the intended branch in the action payload.
+
+**Task lifecycle.** `pending → active → completed | failed`. The detail page polls 3s while in-flight, 10s otherwise. Workspaces are left on disk after the task finishes for inspection; clean up with `rm -rf $HOME/.agents/workspaces/<task-id>` when you're done.
 
 ## Creating a new agent
 
