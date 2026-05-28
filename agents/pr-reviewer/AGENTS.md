@@ -144,121 +144,75 @@ For each issue found, note:
 - What's wrong (be specific)
 - What should be done instead (with a code suggestion when helpful)
 
-### Step 8: Post the review
+### Step 8: Stage the review for human approval
 
-The posting method depends on the REVIEW_FORMAT variable. After **every** post, log it to the platform's `pr_activity` table so the dashboard shows what you did. `gh pr comment` and `gh pr review` print the resulting URL on stdout — capture it.
+**Do not run `gh pr review` or `gh pr comment` directly.** Every PR review the platform sends out goes through the approvals system so a human reviews before anything reaches GitHub. Use the `propose_action` MCP tool — the registered executor handles the actual `gh` call after the user clicks Approve, and the approval row replaces the manual `pr-activity log` bookkeeping.
+
+Pick the kind based on REVIEW_FORMAT:
+
+| REVIEW_FORMAT | kind                                | body |
+|---------------|-------------------------------------|------|
+| `comment`     | `pr_comment` (informal, top-level)  | full review |
+| `review`      | `github_review` + `event` parameter | full review |
 
 #### If REVIEW_FORMAT is `comment`
 
-Post a PR comment (used when formal reviews aren't possible, e.g., reviewing your own PRs).
-
-**If issues found:**
-
-```bash
-BODY="$(cat <<'EOF'
+```text
+propose_action({
+  kind: "pr_comment",
+  title: "Review {REPO}#{PR_NUMBER} — <verdict>",
+  description: "Optional short explanation visible in the approvals UI",
+  payload: {
+    repo: "{REPO}",
+    prNumber: {PR_NUMBER},
+    body: """
 ## PR Review
 
-**Verdict: CHANGES REQUESTED**
+**Verdict: <APPROVED | CHANGES REQUESTED>**
 
 <overall summary — 2-3 sentences about what the PR does and your assessment>
 
 ### Issues
 
-<numbered list of issues with file:line references>
+<numbered list of issues with file:line references; omit when none>
 
 ### Suggestions
 
 <optional: non-blocking improvements>
-
-EOF
-)"
-
-URL=$(gh pr comment {PR_NUMBER} --repo "{REPO}" --body "$BODY")
-pnpm -s pr-activity log \
-  --github "{REPO}" \
-  --pr {PR_NUMBER} \
-  --kind issue_comment \
-  --status posted \
-  --github-url "$URL" \
-  --payload "$(python3 -c 'import json,sys;print(json.dumps({"verdict":"changes_requested","body_excerpt":sys.argv[1][:200]}))' "$BODY")"
-```
-
-**If the PR looks good:**
-
-```bash
-BODY="$(cat <<'EOF'
-## PR Review
-
-**Verdict: APPROVED**
-
-<summary of what was reviewed and why it looks good>
-
-EOF
-)"
-
-URL=$(gh pr comment {PR_NUMBER} --repo "{REPO}" --body "$BODY")
-pnpm -s pr-activity log \
-  --github "{REPO}" \
-  --pr {PR_NUMBER} \
-  --kind issue_comment \
-  --status posted \
-  --github-url "$URL" \
-  --payload '{"verdict":"approved"}'
+"""
+  }
+})
 ```
 
 #### If REVIEW_FORMAT is `review`
 
-Post a formal GitHub review with approve/request-changes.
-
-**If issues found:**
-
-```bash
-BODY="$(cat <<'EOF'
+```text
+propose_action({
+  kind: "github_review",
+  title: "Review {REPO}#{PR_NUMBER} — <verdict>",
+  description: "Optional short explanation visible in the approvals UI",
+  payload: {
+    repo: "{REPO}",
+    prNumber: {PR_NUMBER},
+    event: "<approve | request_changes | comment>",
+    body: """
 ## PR Review
 
 <overall summary — 2-3 sentences about what the PR does and your assessment>
 
 ### Issues
 
-<numbered list of issues with file:line references>
+<numbered list of issues with file:line references; omit when none>
 
 ### Suggestions
 
 <optional: non-blocking improvements>
-
-EOF
-)"
-
-URL=$(gh pr review {PR_NUMBER} --repo "{REPO}" --request-changes --body "$BODY")
-pnpm -s pr-activity log \
-  --github "{REPO}" \
-  --pr {PR_NUMBER} \
-  --kind review_submitted \
-  --status posted \
-  --github-url "$URL" \
-  --payload '{"verdict":"changes_requested"}'
+"""
+  }
+})
 ```
 
-**If the PR looks good:**
-
-```bash
-BODY="$(cat <<'EOF'
-## PR Review
-
-<summary of what was reviewed and why it looks good>
-
-EOF
-)"
-
-URL=$(gh pr review {PR_NUMBER} --repo "{REPO}" --approve --body "$BODY")
-pnpm -s pr-activity log \
-  --github "{REPO}" \
-  --pr {PR_NUMBER} \
-  --kind review_submitted \
-  --status posted \
-  --github-url "$URL" \
-  --payload '{"verdict":"approved"}'
-```
+`propose_action` returns immediately with `{actionId, status: "pending"}`. Continue with other work or finish — do not retry, do not fall back to direct `gh` calls. The user will see the proposal under `/approvals` and the executor will post the review on their behalf when they click Approve.
 
 ### Step 9: Label the PR
 

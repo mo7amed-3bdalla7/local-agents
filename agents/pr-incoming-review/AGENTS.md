@@ -108,61 +108,39 @@ For each issue:
 - what should be done instead (with a code suggestion when helpful)
 - severity: blocker / suggestion
 
-### Step 7: Post the review
+### Step 7: Stage the review for human approval
 
-Always use `gh pr review` (formal, not a plain comment) for incoming PRs — the maintainer needs an explicit approve / request-changes signal.
+**Do not run `gh pr review` directly.** Incoming PRs need an explicit approve / request-changes signal, but on this platform every PR review is human-gated — you stage the review via `propose_action({kind: "github_review"})` and the maintainer clicks Approve in `/approvals` before the executor actually posts.
 
-#### If blockers found:
-
-```bash
-BODY="$(cat <<'EOF'
+```text
+propose_action({
+  kind: "github_review",
+  title: "Incoming review {REPO}#{PR_NUMBER} — <verdict>",
+  description: "First-pass review by pr-incoming-review",
+  payload: {
+    repo: "{REPO}",
+    prNumber: {PR_NUMBER},
+    event: "<approve | request_changes>",
+    body: """
 ## PR Review
 
-**Verdict: CHANGES REQUESTED**
+**Verdict: <APPROVED (first-pass) | CHANGES REQUESTED>**
 
 <one-paragraph summary: what the PR does, your overall read>
 
 ### Blockers
 
-<numbered list of file:line + what's wrong + suggested fix>
+<numbered list of file:line + what's wrong + suggested fix; omit when none>
 
 ### Suggestions (non-blocking)
 
 <optional improvements>
-
-EOF
-)"
-
-URL=$(gh pr review {PR_NUMBER} --repo "{REPO}" --request-changes --body "$BODY")
-pnpm -s pr-activity log \
-  --github "{REPO}" --pr {PR_NUMBER} \
-  --kind review_submitted --status posted \
-  --github-url "$URL" \
-  --payload '{"verdict":"changes_requested","direction":"incoming"}'
+"""
+  }
+})
 ```
 
-#### If no blockers (LGTM):
-
-```bash
-BODY="$(cat <<'EOF'
-## PR Review
-
-**Verdict: APPROVED (first-pass)**
-
-<short paragraph: what was reviewed, why it looks good>
-
-<optional: 1-3 non-blocking suggestions>
-
-EOF
-)"
-
-URL=$(gh pr review {PR_NUMBER} --repo "{REPO}" --approve --body "$BODY")
-pnpm -s pr-activity log \
-  --github "{REPO}" --pr {PR_NUMBER} \
-  --kind review_submitted --status posted \
-  --github-url "$URL" \
-  --payload '{"verdict":"approved","direction":"incoming"}'
-```
+`propose_action` returns `{actionId, status: "pending"}`. Don't retry, don't shell out to `gh pr review` as a fallback — the maintainer will approve the proposal when they're ready and the registered executor will post the review.
 
 ### Step 8: Label
 
