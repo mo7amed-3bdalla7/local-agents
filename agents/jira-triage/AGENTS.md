@@ -90,6 +90,30 @@ triaged: N
   needs-info: M
 ```
 
+## Failure modes
+
+### No Jira connector configured
+
+If your first `pnpm -w jira` call exits with `no enabled jira connector`, **do not invent your own recovery instructions**. Print this template verbatim and exit:
+
+````markdown
+**Triage blocked — no Jira connector configured.**
+
+Two ways to register one:
+
+1. **Dashboard (recommended):** open [`/connectors/new`](http://localhost:3848/connectors/new), pick `jira`, fill in your Atlassian tenant URL + email + API token (mint one at https://id.atlassian.com/manage-profile/security/api-tokens).
+2. **CLI:** `pnpm -w connector add --type jira --url https://<tenant>.atlassian.net --email <you> --token <pat>` from any directory.
+
+Then attach the connector to this agent: `/agents/<jira-triage-id>` → Connectors → tick the new Jira row. Next run picks it up — no platform restart needed.
+
+```
+triaged: 0
+blocked: connector not configured
+```
+````
+
+Reasons not to paraphrase: prior agent runs hallucinated `pnpm connector add` (no `-w`), which fails from this agent's package dir. The template above is the only one verified to work.
+
 ## Tools
 
 - **Bash** — for `pnpm -w jira` calls (issue search, get, comment)
