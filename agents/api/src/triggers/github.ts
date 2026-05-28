@@ -90,6 +90,14 @@ type PollerState = Record<string, RepoState>;
 interface RepoSubscription {
   agentName: string;
   events: GitHubEvent[];
+  /** When true on PR events, materialize a task + workspace before enqueueing. */
+  materializeTask: boolean;
+  /**
+   * Owner of the subscribing agent. Required when materializeTask is true
+   * (tasks need an owner). Null for file-source agents — materializeTask
+   * is silently ignored for those at fire time.
+   */
+  ownerId: string | null;
 }
 interface RepoPoller {
   repo: string;
@@ -457,13 +465,44 @@ async function pollRepo(repo: string, subscribers: RepoSubscription[]): Promise<
     for (const { event, pr, issue, addedLabels } of allEvents) {
       const matching = subscribers.filter((s) => s.events.includes(event));
       for (const sub of matching) {
-        const meta = pr
+        const baseMeta = pr
           ? buildPRMeta(repo, event, pr, addedLabels)
           : buildIssueMeta(repo, event, issue!, addedLabels);
+
+        // Task-bridging path: only for PR events on subscribers that opted in
+        // and have an owner (file-source agents fall through to the
+        // run-only path with a one-line warning).
+        if (sub.materializeTask && pr) {
+          if (!sub.ownerId) {
+            logger.warn(
+              "github trigger has materializeTask=true but agent has no owner — falling back to run-only path",
+              { repo, agent: sub.agentName },
+            );
+          } else {
+            void materializeAndEnqueue({
+              repo,
+              event,
+              pr,
+              agentName: sub.agentName,
+              ownerId: sub.ownerId,
+              baseMeta,
+            }).catch((err) =>
+              logger.error("materializeAndEnqueue failed", {
+                repo,
+                event,
+                prNumber: pr.number,
+                agent: sub.agentName,
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
+            continue;
+          }
+        }
+
         const ctx: TriggerContext = {
           triggerType: "github",
           triggeredAt: new Date().toISOString(),
-          meta,
+          meta: baseMeta,
         };
         void enqueueRun(sub.agentName, ctx);
       }
@@ -483,6 +522,7 @@ async function pollRepo(repo: string, subscribers: RepoSubscription[]): Promise<
 interface AgentGitHub {
   name: string;
   triggers: GitHubTrigger[];
+  ownerId?: string | null;
 }
 
 export function registerGitHubTriggers(agents: AgentGitHub[]): number {
@@ -501,6 +541,8 @@ export function registerGitHubTriggers(agents: AgentGitHub[]): number {
       const sub: RepoSubscription = {
         agentName: agent.name,
         events: trigger.events,
+        materializeTask: trigger.materializeTask === true,
+        ownerId: agent.ownerId ?? null,
       };
       const interval = trigger.pollIntervalMs ?? defaultInterval;
       const existing = repoMap.get(repo);
@@ -548,4 +590,163 @@ export function stopAllGitHubPollers(): void {
   }
   pollers.length = 0;
   freshRepos.clear();
+}
+
+// ─── Task bridge for PR events ─────────────────────────────────────────────
+
+interface MaterializeArgs {
+  repo: string;
+  event: GitHubEvent;
+  pr: GhPR;
+  agentName: string;
+  ownerId: string;
+  baseMeta: Record<string, unknown>;
+}
+
+/**
+ * Bridge a PR trigger into a task: find the repo row, create the task,
+ * materialize the workspace, check out the PR's head branch in the workspace
+ * clone, then enqueue the agent run with taskId + workspacePath in meta.
+ *
+ * Fails (and falls back to a plain run with the warning logged) if the repo
+ * isn't registered under this owner — the user has to /repos/new first.
+ */
+async function materializeAndEnqueue(args: MaterializeArgs): Promise<void> {
+  const { repo, event, pr, agentName, ownerId, baseMeta } = args;
+
+  // Lazy imports — keep this file's startup cost low for installs that
+  // never wire materializeTask.
+  const { getDb, schema, createTask, materializeTaskWorkspace } = await import(
+    "@agents/core"
+  );
+  const { eq, and } = await import("drizzle-orm");
+
+  const db = getDb();
+  const [repoRow] = await db
+    .select({ id: schema.repos.id })
+    .from(schema.repos)
+    .where(
+      and(
+        eq(schema.repos.githubFullName, repo),
+        eq(schema.repos.ownerId, ownerId),
+      ),
+    )
+    .limit(1);
+  if (!repoRow) {
+    logger.warn(
+      "materializeTask: repo not registered under owner — falling back to run-only path",
+      { repo, agent: agentName, ownerId },
+    );
+    const ctx: TriggerContext = {
+      triggerType: "github",
+      triggeredAt: new Date().toISOString(),
+      meta: baseMeta,
+    };
+    void enqueueRun(agentName, ctx);
+    return;
+  }
+
+  const [agentRow] = await db
+    .select({ id: schema.agents.id })
+    .from(schema.agents)
+    .where(eq(schema.agents.name, agentName))
+    .limit(1);
+  if (!agentRow) {
+    logger.warn("materializeTask: agent row not found", { agentName });
+    return;
+  }
+
+  const brief = [
+    `# PR ${repo}#${pr.number}: ${pr.title}`,
+    "",
+    `**Event:** ${event}`,
+    `**Branch:** \`${pr.headRefName}\` → \`${pr.baseRefName}\``,
+    `**Author:** @${pr.author?.login ?? "?"}`,
+    `**URL:** ${pr.url}`,
+    "",
+    "## Workspace",
+    "",
+    `The linked repo has been cloned and checked out to the PR's head branch (\`${pr.headRefName}\`). Run \`gh pr diff ${pr.number} --repo ${repo}\` to read the diff. Run \`gh pr view ${pr.number} --repo ${repo} --json body,reviews,comments\` for the PR body + any review feedback.`,
+    "",
+    "## Workflow",
+    "",
+    "1. Read the diff and the PR body.",
+    "2. If this is a review trigger (`pr:reviewed`), read the reviewer's comments.",
+    "3. Stage any commits via `propose_action({kind: 'git_commit_push', payload: {repo, branch: " +
+      `'${pr.headRefName}'` +
+      ", message, files}})` — the human will approve before anything pushes back to the PR.",
+    "4. To respond to the review, stage via `propose_action({kind: 'github_review' | 'pr_comment', payload: {...}})`.",
+    "",
+  ].join("\n");
+
+  const task = await createTask({
+    ownerId,
+    agentId: agentRow.id,
+    title: `${event} ${repo}#${pr.number}`,
+    brief,
+    repoIds: [repoRow.id],
+  });
+
+  const workspacePath = await materializeTaskWorkspace(task.id);
+
+  // Check out the PR's head branch inside the task workspace clone so the
+  // agent's tools land on the right code. The clone in the task workspace
+  // points at the central clone as `origin`, so we need to fetch the head
+  // ref from real github first.
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const exec = promisify(execFile);
+  const repoDir = `${workspacePath}/${repo.replace(/\//g, "__")}`;
+  try {
+    // Fetch from real github via the central clone — the workspace clone
+    // doesn't know about github directly.
+    await exec("git", [
+      "-C",
+      repoDir,
+      "fetch",
+      "origin",
+      `+refs/heads/${pr.headRefName}:refs/remotes/origin/${pr.headRefName}`,
+    ]);
+    // -B creates or resets the branch to track origin/<headRefName>.
+    await exec("git", [
+      "-C",
+      repoDir,
+      "checkout",
+      "-B",
+      pr.headRefName,
+      `origin/${pr.headRefName}`,
+    ]);
+  } catch (err) {
+    logger.warn(
+      "materializeTask: failed to checkout PR head — agent will see default branch",
+      {
+        repo,
+        prNumber: pr.number,
+        headRef: pr.headRefName,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
+  }
+
+  const ctx: TriggerContext = {
+    triggerType: "github",
+    triggeredAt: new Date().toISOString(),
+    meta: {
+      ...baseMeta,
+      taskId: task.id,
+      workspacePath,
+      // overwrite meta keys that the task system also reads so the worker
+      // sets cwd correctly even if the trigger payload didn't include them.
+    },
+  };
+  void enqueueRun(agentName, ctx);
+
+  logger.info("materializeTask: task created + workspace ready", {
+    repo,
+    event,
+    prNumber: pr.number,
+    agent: agentName,
+    taskId: task.id,
+    headRef: pr.headRefName,
+  });
 }

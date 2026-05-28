@@ -74,6 +74,19 @@ export interface GitHubTrigger {
   events: GitHubEvent[];
   /** Polling interval in ms (default: 60000). Applies globally per repo — shortest wins. */
   pollIntervalMs?: number;
+  /**
+   * When true and the firing event is a PR event, the platform creates a
+   * task linked to this repo (owner_id = the agent's owner), materializes
+   * the workspace, checks out the PR's head branch in the workspace clone,
+   * and pipes taskId + workspacePath into the run's triggerContext.meta.
+   * The agent then runs with the task workspace as cwd and can use
+   * git_commit_push to push fixes straight back to the PR's branch.
+   *
+   * Requires the agent to be db-source (file-source agents have no owner
+   * to attach the task to). Requires the repo to already be registered
+   * under the agent's owner. Skipped for issue events.
+   */
+  materializeTask?: boolean;
 }
 
 export type Trigger = CronTrigger | WebhookTrigger | FileTrigger | AgentTrigger | GitHubTrigger;

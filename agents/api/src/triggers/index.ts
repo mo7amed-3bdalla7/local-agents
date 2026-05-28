@@ -67,17 +67,30 @@ function isAgent(t: Trigger): t is AgentTrigger {
 
 interface CollectedAgent {
   name: string;
+  ownerId: string | null;
   triggers: Trigger[];
 }
 
 async function collectAgents(): Promise<CollectedAgent[]> {
   const out: CollectedAgent[] = [];
 
+  // Join the agents table to get ownerId for both file- and db-source rows
+  // (file-source agents are owner_id IS NULL, db-source carry the creator).
+  const ownerByName = new Map<string, string | null>();
+  const ownerRows = await getDb()
+    .select({ name: schema.agents.name, ownerId: schema.agents.ownerId })
+    .from(schema.agents);
+  for (const r of ownerRows) ownerByName.set(r.name, r.ownerId);
+
   // File-source agents — registry holds the live AgentConfig objects.
   for (const name of registeredNames()) {
     const entry = getAgent(name);
     if (!entry) continue;
-    out.push({ name, triggers: entry.config.triggers ?? [] });
+    out.push({
+      name,
+      ownerId: ownerByName.get(name) ?? null,
+      triggers: entry.config.triggers ?? [],
+    });
   }
 
   // DB-source agents — read triggers out of configJson.
@@ -85,12 +98,17 @@ async function collectAgents(): Promise<CollectedAgent[]> {
     .select({
       name: schema.agents.name,
       configJson: schema.agents.configJson,
+      ownerId: schema.agents.ownerId,
     })
     .from(schema.agents)
     .where(eq(schema.agents.source, "db"));
   for (const row of dbAgents) {
     const cfg = (row.configJson as { triggers?: AgentConfig["triggers"] }) ?? {};
-    out.push({ name: row.name, triggers: cfg.triggers ?? [] });
+    out.push({
+      name: row.name,
+      ownerId: row.ownerId,
+      triggers: cfg.triggers ?? [],
+    });
   }
 
   return out;
@@ -115,7 +133,11 @@ export async function registerAllTriggers(): Promise<TriggersHandle> {
   const fileCount = registerFileTriggers(fileAgents);
 
   const githubAgents = agents
-    .map((a) => ({ name: a.name, triggers: a.triggers.filter(isGitHub) }))
+    .map((a) => ({
+      name: a.name,
+      ownerId: a.ownerId,
+      triggers: a.triggers.filter(isGitHub),
+    }))
     .filter((a) => a.triggers.length > 0);
   const githubCount = registerGitHubTriggers(githubAgents);
 
