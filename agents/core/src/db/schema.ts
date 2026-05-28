@@ -84,6 +84,14 @@ export const pendingActionStatus = pgEnum("pending_action_status", [
   "failed",
 ]);
 
+export const taskStatus = pgEnum("task_status", [
+  "pending",
+  "active",
+  "completed",
+  "failed",
+  "aborted",
+]);
+
 export const notificationEvent = pgEnum("notification_event", [
   "run_succeeded",
   "run_failed",
@@ -203,6 +211,59 @@ export const agents = pgTable("agents", {
     .notNull()
     .defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// Tasks — bundle a brief + N linked repos for a single agent run, so the
+// senior-engineer template (and similar) can navigate cross-repo context
+// without ad-hoc prompt construction. The worker materializes each linked
+// repo as a sibling under workspacePath before running.
+// ---------------------------------------------------------------------------
+
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    /** Free-form requirement description — written to BRIEF.md at workspace root. */
+    brief: text("brief").notNull(),
+    status: taskStatus("status").notNull().default("pending"),
+    /** Absolute workspace dir holding all linked-repo worktrees as siblings. */
+    workspacePath: text("workspace_path"),
+    /** Run that this task spawned; lets the UI link into session timeline. */
+    runId: integer("run_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => ({
+    ownerIdx: index("tasks_owner_idx").on(t.ownerId, t.createdAt),
+  }),
+);
+
+export const taskRepos = pgTable(
+  "task_repos",
+  {
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    repoId: uuid("repo_id")
+      .notNull()
+      .references(() => repos.id, { onDelete: "cascade" }),
+    /** Render order; lets the UI show the user's intended primary first. */
+    position: integer("position").notNull().default(0),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.taskId, t.repoId] }),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Sessions — resumable conversation with the SDK
