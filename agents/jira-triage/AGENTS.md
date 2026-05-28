@@ -15,7 +15,7 @@ You do **not** transition issues, change assignees, or apply labels. Your only s
 
 ## Constraints
 
-- Read-only on issue content. The only write is `pnpm jira comment` to post your triage.
+- Read-only on issue content. The only write is `pnpm -w jira comment` to post your triage.
 - Never comment twice on the same issue. Before posting, check for an existing comment that starts with the marker `## Triage`.
 - Stay under 6 lines per comment. Skip prefixes, headers, and apologies.
 - If an issue is clearly outside this project's scope (wrong product, spam), say so in one line and stop.
@@ -29,14 +29,14 @@ The prompt injects these variables. Use them throughout the workflow:
 | `JQL` | `project = ENG AND updated >= -1d` | The search filter used to find issues to triage |
 | `MAX_ISSUES` | `10` | Stop after this many issues — keeps single-run cost bounded |
 
-The worker injects `AGENTS_AGENT_ID` and `AGENTS_SESSION_ID` automatically; `pnpm jira` uses the agent's attached Jira connector.
+The worker injects `AGENTS_AGENT_ID` and `AGENTS_SESSION_ID` automatically; `pnpm -w jira` (always invoke with `-w` — the `jira` script lives in the root `package.json`, not in this agent's `package.json`, so without `-w` pnpm exits with `Command "jira" not found`) uses the agent's attached Jira connector.
 
 ## Workflow
 
 ### Step 1: Find candidate issues
 
 ```bash
-pnpm -s jira issue search "$JQL" --max "$MAX_ISSUES"
+pnpm -s -w jira issue search "$JQL" --max "$MAX_ISSUES"
 ```
 
 Capture the issue keys (first column).
@@ -46,7 +46,7 @@ Capture the issue keys (first column).
 #### a. Read the full issue
 
 ```bash
-pnpm -s jira issue get "<KEY>"
+pnpm -s -w jira issue get "<KEY>"
 ```
 
 #### b. Skip if already triaged
@@ -66,7 +66,7 @@ pnpm -s jira issue get "<KEY>"
 #### d. Post the triage comment
 
 ```bash
-pnpm -s jira comment "<KEY>" --body "$(cat <<EOF
+pnpm -s -w jira comment "<KEY>" --body "$(cat <<EOF
 ## Triage
 
 - kind: <bug|feature|question|infra|docs|spam>
@@ -92,14 +92,19 @@ triaged: N
 
 ## Tools
 
-- **Bash** — for `pnpm jira` calls (issue search, get, comment)
+- **Bash** — for `pnpm -w jira` calls (issue search, get, comment)
 - **Read** — not used; everything is API-driven
 
 ## Inputs
 
 Triggered manually for now (via the dashboard's **Run Now** or `pnpm agent-run -- jira-triage`). The trigger context's `meta.jql` and `meta.maxIssues` override the defaults from `agent.config.ts` if present.
 
-A real Jira connector must be attached + enabled for this agent (see `/agents/<id>` → Connectors). If none is attached, the agent's first `pnpm jira` call exits with "no enabled jira connector".
+A real Jira connector must be attached + enabled for this agent. If none is attached, the agent's first `pnpm -w jira` call exits with `no enabled jira connector`. To configure:
+
+1. **Create the connector** at [`/connectors/new`](http://localhost:3848/connectors/new) in the dashboard — pick `jira`, fill in your Atlassian tenant URL + email + API token (mint at https://id.atlassian.com/manage-profile/security/api-tokens). Or via CLI: `pnpm -w connector add --type jira --url https://<tenant>.atlassian.net --email <you> --token <pat>`.
+2. **Attach it to this agent** at `/agents/<jira-triage-id>` → Connectors → tick the box next to the new Jira row.
+
+Next run picks it up — no platform restart needed.
 
 ## Outputs
 
