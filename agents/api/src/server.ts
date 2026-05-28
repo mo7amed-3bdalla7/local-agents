@@ -29,6 +29,7 @@ import {
 import { authRouter, COOKIE_NAME } from "./routes/auth.js";
 import { agentsRouter } from "./routes/agents.js";
 import { agentsGenerateRouter } from "./routes/agents-generate.js";
+import { agentsRefineRouter } from "./routes/agents-refine.js";
 import { approvalsRouter } from "./routes/approvals.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { sessionsRouter } from "./routes/sessions.js";
@@ -158,6 +159,10 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
   // Generate must mount BEFORE /agents to avoid the catch-all "/:id" route
   // matching "/generate" as an id lookup.
   api.route("/agents/generate", agentsGenerateRouter);
+  // Refine sits at /agents/:id/refine — share the :id pattern with the main
+  // agents router; mount BEFORE it so the path is resolved before the
+  // PATCH/DELETE /:id handlers swallow it.
+  api.route("/agents", agentsRefineRouter);
   api.route("/agents", agentsRouter);
   api.route("/sessions", sessionsRouter);
   api.route("/runs", runsRouter);

@@ -70,6 +70,11 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ description }),
       }),
+    refine: (id: string, instruction: string) =>
+      request<RefineResponse>(`/agents/${id}/refine`, {
+        method: "POST",
+        body: JSON.stringify({ instruction }),
+      }),
     get: (id: string) =>
       request<{
         agent: Agent;
@@ -433,6 +438,12 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+}
+
+export interface RefineResponse {
+  before: { systemPrompt: string; configJson: Record<string, unknown> };
+  after: { systemPrompt: string; configJson: Record<string, unknown> };
+  changeNote: string;
 }
 
 export interface GeneratedAgentDraft {

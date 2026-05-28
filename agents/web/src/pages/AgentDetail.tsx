@@ -1,11 +1,13 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Play, Square, Trash2 } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { ArrowLeft, Play, Sparkles, Square, Trash2, X } from "lucide-react";
 import {
   api,
   ApiError,
   type Connector,
   type McpServer,
+  type RefineResponse,
   type RunSummary,
   type Skill,
 } from "../api.ts";
@@ -20,6 +22,7 @@ export function AgentDetail() {
   const { id = "" } = useParams();
   const nav = useNavigate();
   const queryClient = useQueryClient();
+  const [showRefine, setShowRefine] = useState(false);
   const { data, isLoading, error } = useQuery({
     queryKey: ["agent", id],
     queryFn: () => api.agents.get(id),
@@ -123,6 +126,17 @@ export function AgentDetail() {
         description={agent.description}
         actions={
           <div className="flex items-center gap-2">
+            {agent.source === "db" && (
+              <button
+                type="button"
+                onClick={() => setShowRefine(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-sm font-medium text-violet-200 hover:bg-violet-500/20"
+                title="Revise the prompt or config with AI"
+              >
+                <Sparkles className="size-4" />
+                Refine with AI
+              </button>
+            )}
             {agent.source === "db" && (
               <button
                 type="button"
@@ -283,6 +297,17 @@ export function AgentDetail() {
           </Section>
         </div>
       </div>
+
+      {showRefine && (
+        <RefineModal
+          agentId={agent.id}
+          onClose={() => setShowRefine(false)}
+          onApplied={() => {
+            setShowRefine(false);
+            queryClient.invalidateQueries({ queryKey: ["agent", id] });
+          }}
+        />
+      )}
     </>
   );
 }
@@ -541,4 +566,214 @@ function maxCostUsd(
   return typeof exec?.maxCostUsd === "number" && exec.maxCostUsd > 0
     ? exec.maxCostUsd
     : null;
+}
+
+// ─── Refine-with-AI modal ──────────────────────────────────────────────────
+
+function RefineModal({
+  agentId,
+  onClose,
+  onApplied,
+}: {
+  agentId: string;
+  onClose: () => void;
+  onApplied: () => void;
+}) {
+  const [instruction, setInstruction] = useState("");
+  const [draft, setDraft] = useState<RefineResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refine = useMutation({
+    mutationFn: () => api.agents.refine(agentId, instruction.trim()),
+    onSuccess: (resp) => setDraft(resp),
+    onError: (err) => {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Refine failed",
+      );
+    },
+  });
+
+  const apply = useMutation({
+    mutationFn: () => {
+      if (!draft) throw new Error("No draft to apply");
+      return api.agents.update(agentId, {
+        systemPrompt: draft.after.systemPrompt,
+        configJson: draft.after.configJson,
+      });
+    },
+    onSuccess: onApplied,
+    onError: (err) => {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Apply failed",
+      );
+    },
+  });
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!instruction.trim() || refine.isPending) return;
+    setError(null);
+    refine.mutate();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-lg border border-zinc-800 bg-zinc-950 p-5">
+        <div className="mb-4 flex items-start justify-between gap-2">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+              <Sparkles className="size-4 text-violet-300" />
+              Refine this agent with AI
+            </h3>
+            <p className="mt-1 text-xs text-zinc-500">
+              Describe what you want changed; Claude rewrites the prompt + config. You review the diff before applying.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-zinc-500 hover:text-zinc-200"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {!draft ? (
+          <form onSubmit={onSubmit} className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-zinc-400">Instruction</span>
+              <textarea
+                required
+                value={instruction}
+                onChange={(e) => setInstruction(e.target.value)}
+                rows={6}
+                placeholder="Make it run hourly instead of daily, and tighten the output to a single paragraph."
+                className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-violet-500"
+                autoFocus
+              />
+            </label>
+            {error && (
+              <div className="rounded-md border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-sm text-rose-300">
+                {error}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={refine.isPending || !instruction.trim()}
+                className="rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+              >
+                {refine.isPending ? "Drafting…" : "Generate revision"}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-900"
+              >
+                Cancel
+              </button>
+              {refine.isPending && (
+                <span className="text-xs text-zinc-500">~15–30s</span>
+              )}
+            </div>
+          </form>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col gap-3">
+            {draft.changeNote && (
+              <div className="rounded-md border border-violet-500/30 bg-violet-500/5 px-3 py-2 text-sm text-violet-200">
+                {draft.changeNote}
+              </div>
+            )}
+            <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 overflow-hidden">
+              <DiffColumn
+                label="Before"
+                prompt={draft.before.systemPrompt}
+                config={draft.before.configJson}
+              />
+              <DiffColumn
+                label="After"
+                prompt={draft.after.systemPrompt}
+                config={draft.after.configJson}
+                accent
+              />
+            </div>
+            {error && (
+              <div className="rounded-md border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-sm text-rose-300">
+                {error}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => apply.mutate()}
+                disabled={apply.isPending}
+                className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {apply.isPending ? "Applying…" : "Apply changes"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDraft(null)}
+                className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-900"
+              >
+                Try another instruction
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="ml-auto text-sm text-zinc-500 hover:text-zinc-300"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DiffColumn({
+  label,
+  prompt,
+  config,
+  accent = false,
+}: {
+  label: string;
+  prompt: string;
+  config: Record<string, unknown>;
+  accent?: boolean;
+}) {
+  const border = accent ? "border-violet-500/40" : "border-zinc-800";
+  return (
+    <div className={`flex min-h-0 flex-col gap-2 rounded-md border ${border} bg-zinc-950 p-2`}>
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+        {label}
+      </div>
+      <details className="text-xs" open>
+        <summary className="cursor-pointer text-zinc-400 hover:text-zinc-200">
+          system prompt
+        </summary>
+        <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-zinc-900 p-2 text-[11px] text-zinc-300">
+          {prompt}
+        </pre>
+      </details>
+      <details className="text-xs">
+        <summary className="cursor-pointer text-zinc-400 hover:text-zinc-200">
+          configJson
+        </summary>
+        <pre className="mt-1 max-h-48 overflow-auto rounded bg-zinc-900 p-2 font-mono text-[11px] text-zinc-300">
+          {JSON.stringify(config, null, 2)}
+        </pre>
+      </details>
+    </div>
+  );
 }
