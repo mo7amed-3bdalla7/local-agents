@@ -103,6 +103,18 @@ export {
 } from "./approvals/index.js";
 
 export {
+  createTask,
+  getTask,
+  listTasks,
+  materializeTaskWorkspace,
+  removeTask,
+  setTaskStatus,
+  type CreateTaskArgs,
+  type Task,
+  type TaskWithRepos,
+} from "./tasks/index.js";
+
+export {
   cloneTemplate,
   getTemplateBySlug,
   listTemplates,

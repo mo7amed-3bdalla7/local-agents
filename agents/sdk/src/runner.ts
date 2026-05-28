@@ -147,6 +147,12 @@ export interface ExecuteAgentOptions {
    * without the agent author having to allowlist them in their config.
    */
   extraAllowedTools?: string[];
+  /**
+   * Override the agent's working directory for this run only. Used by tasks
+   * to point the agent at a workspace dir containing the linked-repo
+   * checkouts + BRIEF.md, instead of the agent's package dir.
+   */
+  cwdOverride?: string;
 }
 
 /**
@@ -167,6 +173,7 @@ export async function executeAgent(
     mcpServers,
     skills,
     extraAllowedTools,
+    cwdOverride,
   } = opts;
   const startedAt = new Date().toISOString();
   const start = Date.now();
@@ -194,6 +201,7 @@ export async function executeAgent(
       mcpServers,
       skills,
       extraAllowedTools,
+      cwdOverride,
     );
   } finally {
     for (const key of addedEnvKeys) {
@@ -229,6 +237,7 @@ async function executeAgentCore(
   mcpServers?: Record<string, McpServerConfig>,
   skills?: string[],
   extraAllowedTools?: string[],
+  cwdOverride?: string,
 ): Promise<RunResult> {
   const log = await openRunLog(
     agentDir,
@@ -276,7 +285,8 @@ async function executeAgentCore(
       log.write(fullPrompt + "\n\n");
 
       const timeoutMs = config.execution?.timeoutMs ?? 300_000;
-      const cwd = config.execution?.cwd ?? agentDir;
+      // Per-run cwdOverride (used by tasks) wins over agent-level config.
+      const cwd = cwdOverride ?? config.execution?.cwd ?? agentDir;
       let output = "";
 
       let baseTools = config.execution?.tools ?? [

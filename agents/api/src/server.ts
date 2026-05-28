@@ -33,6 +33,7 @@ import { agentsRefineRouter } from "./routes/agents-refine.js";
 import { approvalsRouter } from "./routes/approvals.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { sessionsRouter } from "./routes/sessions.js";
+import { tasksRouter } from "./routes/tasks.js";
 import { templatesRouter } from "./routes/templates.js";
 import { tokensRouter } from "./routes/tokens.js";
 import { registerPrCommentExecutor } from "./executors/pr-comment.js";
@@ -176,6 +177,7 @@ export function createApp(): Hono<{ Variables: AppVariables }> {
   api.route("/notifications", notificationsRouter);
   api.route("/tokens", tokensRouter);
   api.route("/templates", templatesRouter);
+  api.route("/tasks", tasksRouter);
   app.route("/api", api);
 
   app.onError((err, c) => {

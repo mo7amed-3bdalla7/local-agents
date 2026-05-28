@@ -19,7 +19,7 @@ import {
   type RunEvent,
   type TriggerContext,
 } from "@agents/sdk";
-import { dispatchEvent, getDb, schema } from "@agents/core";
+import { dispatchEvent, getDb, schema, setTaskStatus } from "@agents/core";
 import { loadDbAgent } from "./db-agents.js";
 import { getAgent } from "./registry.js";
 import { fireAgentPipeline } from "./triggers/agent-pipeline.js";
@@ -351,6 +351,25 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
         logger.info("Injecting skills into run", { agentId: run.agentId, skills });
       }
 
+      // If this run was kicked off via a task, route cwd to the task's
+      // workspace dir (where each linked repo is checked out + BRIEF.md sits).
+      const triggerMeta =
+        (run.triggerContext as { meta?: Record<string, unknown> } | null)?.meta ??
+        {};
+      const taskId =
+        typeof triggerMeta.taskId === "string" ? triggerMeta.taskId : undefined;
+      const workspacePath =
+        typeof triggerMeta.workspacePath === "string"
+          ? triggerMeta.workspacePath
+          : undefined;
+      if (taskId) {
+        logger.info("Run is task-bound", {
+          taskId,
+          workspacePath,
+          runId: run.id,
+        });
+      }
+
       const result = await executeAgent({
         config: entry.config,
         agentDir: entry.dir,
@@ -360,10 +379,12 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
         extraEnv: {
           AGENTS_SESSION_ID: session.id,
           AGENTS_AGENT_ID: run.agentId,
+          ...(taskId ? { AGENTS_TASK_ID: taskId } : {}),
         },
         mcpServers,
         skills,
         extraAllowedTools: [APPROVALS_TOOL_FQN],
+        cwdOverride: workspacePath,
       });
 
       const finishedAt = new Date(result.finishedAt);
@@ -393,6 +414,20 @@ async function processRun(run: ClaimedRun): Promise<ActiveRun> {
           finishedAt,
         })
         .where(eq(schema.sessions.id, session.id));
+
+      // Mirror the run outcome onto tasks.status if this run was task-bound.
+      if (taskId) {
+        await setTaskStatus(
+          taskId,
+          result.status === "success" ? "completed" : "failed",
+          { finishedAt },
+        ).catch((err) =>
+          logger.warn("setTaskStatus failed", {
+            taskId,
+            error: String(err),
+          }),
+        );
+      }
 
       // Notifications: fire run_succeeded / run_failed for the agent owner.
       // File-source agents (ownerId=null) have no owner to notify; skip.
