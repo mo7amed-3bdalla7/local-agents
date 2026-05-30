@@ -182,6 +182,18 @@ export const api = {
   },
   skills: {
     list: () => request<{ skills: Skill[] }>("/skills"),
+    search: (q: string) =>
+      request<{ skills: SkillSearchHit[] }>(
+        `/skills/search?q=${encodeURIComponent(q)}`,
+      ),
+    install: (pkg: string, skill?: string) =>
+      request<{ ok: boolean; output?: string; message?: string }>(
+        "/skills/install",
+        {
+          method: "POST",
+          body: JSON.stringify({ package: pkg, skill }),
+        },
+      ),
   },
   mcp: {
     list: () => request<{ mcpServers: McpServer[] }>("/mcp-servers"),
@@ -692,6 +704,14 @@ export interface Skill {
   description: string;
   localPath: string;
   enabled: boolean;
+}
+
+export interface SkillSearchHit {
+  id: string;
+  skillId: string;
+  name: string;
+  installs?: number;
+  source: string;
 }
 
 export interface McpTool {

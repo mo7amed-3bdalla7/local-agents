@@ -21,9 +21,15 @@ import {
   testMcpServer,
   type McpTransport,
 } from "@agents/core";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { isUuid } from "../util.js";
 import { currentUserId } from "../auth-util.js";
 import { abortRun } from "../worker.js";
+import { syncSkills } from "../skills/sync.js";
+import { workspaceRoot } from "../paths.js";
+
+const exec = promisify(execFile);
 
 // ---------------------------------------------------------------------------
 // Connectors
@@ -115,6 +121,93 @@ connectorsRouter.post("/:id/test", async (c) => {
 // ---------------------------------------------------------------------------
 
 export const skillsRouter = new Hono();
+
+// Proxy to skills.sh's search API. Public registry; we still gate the
+// proxy behind our own auth middleware so unauthenticated requests can't
+// drive arbitrary outbound calls.
+skillsRouter.get("/search", async (c) => {
+  const q = c.req.query("q")?.trim() ?? "";
+  if (!q) return c.json({ skills: [] });
+  try {
+    const res = await fetch(
+      `https://skills.sh/api/search?q=${encodeURIComponent(q)}`,
+      { headers: { "user-agent": "agents-platform" } },
+    );
+    if (!res.ok) {
+      return c.json({ error: "search_failed", status: res.status }, 502);
+    }
+    const data = (await res.json()) as {
+      skills?: Array<{
+        id: string;
+        skillId: string;
+        name: string;
+        installs?: number;
+        source: string;
+      }>;
+    };
+    return c.json({ skills: data.skills ?? [] });
+  } catch (err) {
+    return c.json(
+      {
+        error: "search_failed",
+        message: err instanceof Error ? err.message : String(err),
+      },
+      502,
+    );
+  }
+});
+
+// Install a skill via `npx -y skills add <package> [-s <skill>] -y --copy`.
+// After install, re-scan the filesystem so the skills table picks up the
+// new row. Bounded to 120s; output buffer 4 MiB.
+skillsRouter.post("/install", async (c) => {
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "invalid_body" }, 400);
+  }
+  const pkg = typeof body.package === "string" ? body.package.trim() : "";
+  const skill = typeof body.skill === "string" ? body.skill.trim() : "";
+
+  if (!pkg || !/^[^\s]+$/.test(pkg)) {
+    return c.json(
+      {
+        error: "invalid_package",
+        message: 'Provide a package spec like "owner/repo" or a github URL.',
+      },
+      400,
+    );
+  }
+
+  const args = ["-y", "skills", "add", pkg, "-y", "--copy"];
+  if (skill) args.push("--skill", skill);
+
+  try {
+    const { stdout, stderr } = await exec("npx", args, {
+      cwd: workspaceRoot(),
+      timeout: 120_000,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    const result = await syncSkills(workspaceRoot());
+    return c.json({
+      ok: true,
+      output: (stdout || stderr || "").slice(-4000),
+      synced: result,
+    });
+  } catch (err) {
+    const e = err as { stderr?: string; stdout?: string; message?: string };
+    return c.json(
+      {
+        ok: false,
+        error: "install_failed",
+        message: (e.stderr || e.stdout || e.message || String(err)).slice(-4000),
+      },
+      500,
+    );
+  }
+});
+
 skillsRouter.get("/", async (c) => {
   const rows = await getDb()
     .select()
