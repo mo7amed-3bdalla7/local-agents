@@ -197,6 +197,27 @@ The four most common ways to use this platform:
 | **Address review feedback on my PR + push fix locally** | Github trigger with `events:["pr:reviewed"]` + `materializeTask:true` on an owned agent. Trigger auto-creates a task pre-checked-out on the PR branch with review comments in BRIEF.md. Agent reads, fixes, `git_commit_push({branch: <PR head>})`. |
 | **Review other team members' PRs** | Use `pr-incoming-review` (file-source agent in this repo). Fill in `repos` in its `agent.config.ts`, restart, `gh auth login`. The github poller fires on `pr:opened`/`synchronize`/`reopened`; the agent reviews, stages the verdict via `propose_action({kind:"github_review"})`. |
 
+## Registering a repo
+
+Two paths at [`/repos/new`](http://localhost:3848/repos/new) — pick whichever matches what you've got:
+
+- **Clone from GitHub** — paste `owner/name`, the platform clones into `~/.agents/worktrees/<owner>__<name>/.repo/`. Use for repos you don't already have checked out.
+- **Link local clone** — paste an absolute path to an existing git checkout. The platform stores the row pointing at *that path* (no re-clone, no copy). `owner/name` and the default branch are auto-detected from the repo's `origin` remote.
+
+### Linking local repos in Docker mode
+
+Paths in the form are paths the **API process** sees. In dev mode (`pnpm api`) that's just host paths. In Docker mode the API runs in a container and only sees `/data/…` plus whatever you bind-mount in.
+
+To link a host repo from a custom path, edit `docker-compose.yml` — the `api` service has a commented-out example. Add a bind mount like:
+
+```yaml
+    volumes:
+      - ./data/agents:/data
+      - ~/code:/host-repos:ro              # mount your parent code dir
+```
+
+Then `docker compose up -d` and paste `/host-repos/my-project` into the form. `:ro` mounts read-only — the agent can `git log` / `git diff` against the host copy but can't push back to it directly (commits still flow through `propose_action({kind:"git_commit_push"})` which clones into a task workspace anyway).
+
 ## Creating a new agent
 
 Each agent needs 4 files: `AGENTS.md`, `agent.config.ts`, `package.json`, `tsconfig.json`. No `src/index.ts` — the runner handles execution.

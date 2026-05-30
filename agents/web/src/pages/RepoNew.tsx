@@ -149,8 +149,31 @@ export function RepoNew() {
                   must be an absolute path (start with `/`)
                 </div>
               )}
-              <div className="mt-2 text-[11px] text-zinc-500">
-                The path must exist and contain a <code className="text-zinc-400">.git/</code> directory. Inside the container, paths refer to <code className="text-zinc-400">/data/&hellip;</code>; on macOS dev they're host paths.
+              <div className="mt-2 space-y-1 text-[11px] text-zinc-500">
+                <div>
+                  The path must exist and contain a{" "}
+                  <code className="text-zinc-400">.git/</code> directory, and
+                  be readable by the API process. The platform never copies
+                  or re-clones — the row points at this exact path.
+                </div>
+                <div>
+                  <span className="font-semibold text-zinc-400">
+                    Dev mode (pnpm api):
+                  </span>{" "}
+                  any absolute path on your machine works.
+                </div>
+                <div>
+                  <span className="font-semibold text-zinc-400">
+                    Docker mode:
+                  </span>{" "}
+                  the path is{" "}
+                  <em>inside the container</em>. To use host repos from a
+                  custom path, bind-mount your code dir in{" "}
+                  <code className="text-zinc-400">docker-compose.yml</code>{" "}
+                  (the api service has a commented-out example), then paste
+                  the container-side path here — e.g.{" "}
+                  <code className="text-zinc-400">/host-repos/my-project</code>.
+                </div>
               </div>
             </Field>
             <Field
