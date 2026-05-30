@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  ArrowUp,
+  Check,
+  Folder,
+  FolderGit2,
+  X,
+} from "lucide-react";
 import { api, ApiError, type CreateRepoArgs } from "../api.ts";
 import { PageHeader } from "../components/PageHeader.tsx";
 
@@ -20,6 +27,7 @@ export function RepoNew() {
   // Link-mode state
   const [localPath, setLocalPath] = useState("");
   const [originOverride, setOriginOverride] = useState("");
+  const [showPicker, setShowPicker] = useState(false);
 
   // Shared
   const [defaultBranch, setDefaultBranch] = useState("");
@@ -137,13 +145,23 @@ export function RepoNew() {
               label="Local path"
               hint="absolute path to an existing git checkout on your machine"
             >
-              <input
-                type="text"
-                value={localPath}
-                onChange={(e) => setLocalPath(e.target.value)}
-                placeholder="/Users/you/code/my-project"
-                className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-emerald-500"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={localPath}
+                  onChange={(e) => setLocalPath(e.target.value)}
+                  placeholder="/Users/you/code/my-project"
+                  className="flex-1 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-emerald-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPicker(true)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
+                  title="Browse directories on the API server"
+                >
+                  <Folder className="size-4" /> Browse…
+                </button>
+              </div>
               {localPath && !linkPathValid && (
                 <div className="mt-1 text-xs text-amber-400">
                   must be an absolute path (start with `/`)
@@ -242,7 +260,127 @@ export function RepoNew() {
               : "Link local repo"}
         </button>
       </div>
+
+      {showPicker && (
+        <DirPicker
+          onClose={() => setShowPicker(false)}
+          onSelect={(p) => {
+            setLocalPath(p);
+            setShowPicker(false);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function DirPicker({
+  onSelect,
+  onClose,
+}: {
+  onSelect: (path: string) => void;
+  onClose: () => void;
+}) {
+  const [currentPath, setCurrentPath] = useState<string | undefined>(undefined);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["repos", "browse", currentPath ?? "__home__"],
+    queryFn: () => api.repos.browse(currentPath),
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex h-[70vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+          <div className="text-sm font-medium text-zinc-100">
+            Pick a local git checkout
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-2">
+          <button
+            type="button"
+            disabled={!data || data.path === "/"}
+            onClick={() => data && setCurrentPath(data.parent)}
+            className="inline-flex items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
+            title="Go to parent directory"
+          >
+            <ArrowUp className="size-3.5" /> Up
+          </button>
+          <div
+            className="flex-1 truncate font-mono text-xs text-zinc-300"
+            title={data?.path}
+          >
+            {data?.path ?? (isLoading ? "loading…" : "")}
+          </div>
+          {data?.isGitRepo && (
+            <button
+              type="button"
+              onClick={() => onSelect(data.path)}
+              className="inline-flex items-center gap-1 rounded bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+            >
+              <Check className="size-3.5" /> Select this folder
+            </button>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {error && (
+            <div className="p-4 text-xs text-rose-400">
+              {error instanceof ApiError ? error.message : String(error)}
+            </div>
+          )}
+          {!error && data && data.entries.length === 0 && (
+            <div className="p-4 text-xs text-zinc-500">
+              empty directory (dotfiles hidden)
+            </div>
+          )}
+          {!error &&
+            data?.entries.map((entry) => {
+              const childPath =
+                data.path === "/" ? `/${entry.name}` : `${data.path}/${entry.name}`;
+              return (
+                <button
+                  key={entry.name}
+                  type="button"
+                  onClick={() => setCurrentPath(childPath)}
+                  className="flex w-full items-center gap-2 border-b border-zinc-900 px-4 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-900"
+                >
+                  {entry.isGitRepo ? (
+                    <FolderGit2 className="size-4 shrink-0 text-emerald-400" />
+                  ) : (
+                    <Folder className="size-4 shrink-0 text-zinc-500" />
+                  )}
+                  <span className="flex-1 truncate font-mono">{entry.name}</span>
+                  {entry.isGitRepo && (
+                    <span className="rounded bg-emerald-950 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                      git
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+        </div>
+
+        <div className="border-t border-zinc-800 px-4 py-2 text-[11px] text-zinc-500">
+          Click a folder to open it. Folders marked{" "}
+          <span className="text-emerald-400">git</span> are git checkouts —
+          open one, then click <strong>Select this folder</strong>.
+        </div>
+      </div>
+    </div>
   );
 }
 

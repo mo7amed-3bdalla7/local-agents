@@ -212,6 +212,10 @@ export const api = {
   },
   repos: {
     list: () => request<{ repos: Repo[] }>("/repos"),
+    browse: (path?: string) =>
+      request<BrowseDirResponse>(
+        `/repos/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`,
+      ),
     create: (args: CreateRepoArgs) =>
       request<{ repo: Repo }>("/repos", {
         method: "POST",
@@ -526,6 +530,21 @@ export interface Usage {
     outputTokens: number;
     costUsd: string;
   }>;
+}
+
+export interface BrowseDirEntry {
+  name: string;
+  isDir: boolean;
+  isGitRepo: boolean;
+}
+
+export interface BrowseDirResponse {
+  path: string;
+  parent: string;
+  exists: boolean;
+  isDir: boolean;
+  isGitRepo: boolean;
+  entries: BrowseDirEntry[];
 }
 
 export interface CreateRepoArgs {

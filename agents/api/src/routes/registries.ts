@@ -313,6 +313,116 @@ mcpRouter.post("/:id/test", async (c) => {
 
 export const reposRouter = new Hono();
 
+/**
+ * GET /api/repos/browse?path=<abs>
+ *
+ * Server-side directory listing used by the /repos/new "Link local clone"
+ * picker. Returns child dirs of `path` and marks the ones that are git
+ * repos (have a .git/ subdir). Dotfiles are skipped (except `.git` which
+ * we never list as a child anyway since we filter to dirs).
+ *
+ * Defaults to the API process's home dir when no path is given. Path must
+ * be absolute. Permission-denied / dangling-symlink children are silently
+ * skipped so a single unreadable subtree doesn't break the picker.
+ */
+reposRouter.get("/browse", async (c) => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { homedir } = await import("node:os");
+
+  let requested = c.req.query("path");
+  if (!requested) requested = homedir();
+  if (!path.isAbsolute(requested)) {
+    return c.json(
+      { error: "path_not_absolute", message: "path must be absolute" },
+      400,
+    );
+  }
+  const abs = path.resolve(requested);
+
+  if (!fs.existsSync(abs)) {
+    return c.json({
+      path: abs,
+      parent: path.dirname(abs),
+      exists: false,
+      isDir: false,
+      isGitRepo: false,
+      entries: [],
+    });
+  }
+  let stat;
+  try {
+    stat = fs.statSync(abs);
+  } catch (err) {
+    return c.json(
+      {
+        error: "stat_failed",
+        message: err instanceof Error ? err.message : String(err),
+      },
+      400,
+    );
+  }
+  if (!stat.isDirectory()) {
+    return c.json({
+      path: abs,
+      parent: path.dirname(abs),
+      exists: true,
+      isDir: false,
+      isGitRepo: false,
+      entries: [],
+    });
+  }
+
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(abs);
+  } catch (err) {
+    return c.json(
+      {
+        error: "readdir_failed",
+        message: err instanceof Error ? err.message : String(err),
+        path: abs,
+        parent: path.dirname(abs),
+        exists: true,
+        isDir: true,
+        isGitRepo: fs.existsSync(path.join(abs, ".git")),
+        entries: [],
+      },
+      400,
+    );
+  }
+  const entries: Array<{ name: string; isDir: boolean; isGitRepo: boolean }> = [];
+  for (const name of names) {
+    if (name.startsWith(".")) continue;
+    const childAbs = path.join(abs, name);
+    try {
+      const childStat = fs.statSync(childAbs);
+      if (!childStat.isDirectory()) continue;
+      entries.push({
+        name,
+        isDir: true,
+        isGitRepo: fs.existsSync(path.join(childAbs, ".git")),
+      });
+    } catch {
+      // permission denied / dangling symlink — skip
+    }
+  }
+  // Git repos first, then alpha.
+  entries.sort((a, b) => {
+    if (a.isGitRepo !== b.isGitRepo) return a.isGitRepo ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  return c.json({
+    path: abs,
+    parent: path.dirname(abs),
+    exists: true,
+    isDir: true,
+    isGitRepo: fs.existsSync(path.join(abs, ".git")),
+    entries,
+  });
+});
+
 reposRouter.get("/", async (c) => {
   const rows = await getDb()
     .select()

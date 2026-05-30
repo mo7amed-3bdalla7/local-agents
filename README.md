@@ -107,7 +107,8 @@ Whichever path you took above (`docker compose up -d` or `pnpm api` from source)
 | **Approvals** | Side-effecting actions agents have proposed waiting for human approval. Tabs for Pending / Executed / Rejected / Failed |
 | **Capabilities** | Self-documenting surface: every registered executor (with payload field tables + example JSON) and every notification sender. Discovery for users authoring agent prompts |
 | **Notifications** | Channels (console, webhook, slack), Subscriptions matrix (events × channels), Deliveries audit log |
-| **Connectors / Skills / MCP servers / Repos** | Registries with CRUD + Test buttons |
+| **Connectors / MCP servers / Repos** | Registries with CRUD + Test buttons. Repos page has a server-side directory picker for linking local clones |
+| **Skills** | Search [skills.sh](https://skills.sh) and install with one click — proxied through the API so installs land in `.claude/skills/` and become available to every agent |
 | **API tokens** | Mint (plaintext shown once), revoke, see last-used |
 | **Usage** | Per-agent + per-day cost / token rollups (last 7 days by default) |
 | **PR activity** | Audit log of comments and commits agents have posted under your GitHub identity |
@@ -202,7 +203,7 @@ The four most common ways to use this platform:
 Two paths at [`/repos/new`](http://localhost:3848/repos/new) — pick whichever matches what you've got:
 
 - **Clone from GitHub** — paste `owner/name`, the platform clones into `~/.agents/worktrees/<owner>__<name>/.repo/`. Use for repos you don't already have checked out.
-- **Link local clone** — paste an absolute path to an existing git checkout. The platform stores the row pointing at *that path* (no re-clone, no copy). `owner/name` and the default branch are auto-detected from the repo's `origin` remote.
+- **Link local clone** — paste an absolute path to an existing git checkout, or click **Browse…** to walk the filesystem from the API process's view (folders marked `git` are checkouts you can select directly). The platform stores the row pointing at *that path* (no re-clone, no copy). `owner/name` and the default branch are auto-detected from the repo's `origin` remote.
 
 ### Linking local repos in Docker mode
 
