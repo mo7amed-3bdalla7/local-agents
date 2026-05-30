@@ -14,6 +14,7 @@ import {
   addConnector,
   addMcpServer,
   ensureRepo,
+  linkLocalRepo,
   getDb,
   removeConnector,
   schema,
@@ -328,21 +329,46 @@ reposRouter.post("/", async (c) => {
   } catch {
     return c.json({ error: "invalid_body" }, 400);
   }
+  const localPath =
+    typeof body.localPath === "string" ? body.localPath.trim() : "";
   const githubFullName =
     typeof body.githubFullName === "string" ? body.githubFullName.trim() : "";
-  if (!githubFullName.includes("/")) {
-    return c.json(
-      {
-        error: "invalid_github_full_name",
-        message: 'must be "owner/name"',
-      },
-      400,
-    );
-  }
   const defaultBranch =
     typeof body.defaultBranch === "string" ? body.defaultBranch : undefined;
   const testCommand =
     typeof body.testCommand === "string" ? body.testCommand : undefined;
+
+  // Two modes — link an existing local clone, or clone a github repo fresh.
+  if (localPath) {
+    try {
+      const row = await linkLocalRepo({
+        localPath,
+        defaultBranch,
+        githubFullName: githubFullName || undefined,
+        testCommand,
+        ownerId: currentUserId(c),
+      });
+      return c.json({ repo: row }, 201);
+    } catch (err) {
+      return c.json(
+        {
+          error: "link_failed",
+          message: err instanceof Error ? err.message : String(err),
+        },
+        400,
+      );
+    }
+  }
+
+  if (!githubFullName.includes("/")) {
+    return c.json(
+      {
+        error: "invalid_github_full_name",
+        message: 'must be "owner/name" — or provide localPath to link an existing clone',
+      },
+      400,
+    );
+  }
 
   try {
     // Note: ensureRepo() runs `git clone` if missing — can be slow on a fresh

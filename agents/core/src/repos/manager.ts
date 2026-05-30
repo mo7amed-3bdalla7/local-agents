@@ -160,6 +160,139 @@ export async function ensureRepo(args: EnsureRepoArgs): Promise<Repo> {
   return existing;
 }
 
+/**
+ * Parse an `origin` URL into `owner/name`. Handles the common GitHub URL
+ * shapes and tolerates a trailing `.git`.
+ *
+ *   https://github.com/owner/name        → owner/name
+ *   https://github.com/owner/name.git    → owner/name
+ *   git@github.com:owner/name.git        → owner/name
+ *   ssh://git@github.com/owner/name      → owner/name
+ */
+export function parseGithubOriginUrl(url: string): string | null {
+  const trimmed = url.trim().replace(/\.git$/, "");
+  // git@github.com:owner/name
+  const ssh = /^git@(?:[^:]+):([^/]+\/[^/]+)$/.exec(trimmed);
+  if (ssh) return ssh[1];
+  // ssh://git@host/owner/name  or  https://host/owner/name
+  const url2 = /^(?:ssh:\/\/git@|https?:\/\/)[^/]+\/([^/]+\/[^/]+)$/.exec(trimmed);
+  if (url2) return url2[1];
+  return null;
+}
+
+export interface LinkLocalRepoArgs {
+  /** Absolute path to an existing git checkout on disk. */
+  localPath: string;
+  /** Override default branch detection. */
+  defaultBranch?: string;
+  /** Override origin-URL detection (e.g. for repos without a github origin). */
+  githubFullName?: string;
+  testCommand?: string;
+  secretRef?: string;
+  ownerId?: string;
+}
+
+/**
+ * Register an existing local git clone with the platform — no re-clone, no
+ * worktree shuffle, the row points at the path the user gave us. Detects
+ * `origin` URL → derives `owner/name` automatically, and detects the
+ * default branch from `origin/HEAD`. Either can be overridden via args.
+ *
+ * Idempotent: re-running with the same localPath returns the existing row.
+ */
+export async function linkLocalRepo(args: LinkLocalRepoArgs): Promise<Repo> {
+  const abs = resolve(args.localPath);
+  if (!existsSync(abs)) {
+    throw new Error(`localPath does not exist: ${abs}`);
+  }
+  if (!existsSync(join(abs, ".git"))) {
+    throw new Error(`localPath is not a git repo (no .git/): ${abs}`);
+  }
+
+  let githubFullName = args.githubFullName?.trim();
+  if (!githubFullName) {
+    try {
+      const { stdout } = await exec("git", [
+        "-C",
+        abs,
+        "config",
+        "--get",
+        "remote.origin.url",
+      ]);
+      const url = stdout.trim();
+      if (!url) {
+        throw new Error(
+          `no origin url found; pass githubFullName explicitly`,
+        );
+      }
+      const parsed = parseGithubOriginUrl(url);
+      if (!parsed) {
+        throw new Error(
+          `could not parse owner/name from origin url ${url}; pass githubFullName explicitly`,
+        );
+      }
+      githubFullName = parsed;
+    } catch (err) {
+      throw new Error(
+        `failed to detect github full name: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  let defaultBranch = args.defaultBranch?.trim();
+  if (!defaultBranch) {
+    try {
+      const { stdout } = await exec("git", [
+        "-C",
+        abs,
+        "symbolic-ref",
+        "--short",
+        "refs/remotes/origin/HEAD",
+      ]);
+      // "origin/main" → "main"
+      defaultBranch = stdout.trim().replace(/^origin\//, "");
+    } catch {
+      defaultBranch = "main";
+    }
+  }
+
+  const db = getDb();
+  const [existing] = await db
+    .select()
+    .from(schema.repos)
+    .where(eq(schema.repos.githubFullName, githubFullName))
+    .limit(1);
+  if (existing) {
+    // If they're linking the same repo from a different path, update the
+    // localPath to point at the new one. The old central clone (if any)
+    // is left on disk for the user to clean up — we don't delete things
+    // we didn't create.
+    if (existing.localPath !== abs) {
+      const [row] = await db
+        .update(schema.repos)
+        .set({ localPath: abs, defaultBranch })
+        .where(eq(schema.repos.id, existing.id))
+        .returning();
+      return row;
+    }
+    return existing;
+  }
+
+  const [row] = await db
+    .insert(schema.repos)
+    .values({
+      githubFullName,
+      localPath: abs,
+      defaultBranch,
+      testCommand: args.testCommand,
+      secretRef: args.secretRef,
+      autoModes: {},
+      ownerId: args.ownerId,
+    })
+    .returning();
+  return row;
+}
+
 export interface EnsureWorktreeArgs {
   repoId: string;
   branch: string;

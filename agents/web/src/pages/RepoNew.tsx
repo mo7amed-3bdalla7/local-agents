@@ -7,12 +7,24 @@ import { PageHeader } from "../components/PageHeader.tsx";
 
 const NAME_PATTERN = /^[^/\s]+\/[^/\s]+$/;
 
+type Mode = "clone" | "link";
+
 export function RepoNew() {
   const nav = useNavigate();
   const queryClient = useQueryClient();
+  const [mode, setMode] = useState<Mode>("clone");
+
+  // Clone-mode state
   const [githubFullName, setGithubFullName] = useState("");
+
+  // Link-mode state
+  const [localPath, setLocalPath] = useState("");
+  const [originOverride, setOriginOverride] = useState("");
+
+  // Shared
   const [defaultBranch, setDefaultBranch] = useState("");
   const [testCommand, setTestCommand] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const create = useMutation({
     mutationFn: (args: CreateRepoArgs) => api.repos.create(args),
@@ -22,16 +34,33 @@ export function RepoNew() {
     },
   });
 
-  const nameValid = NAME_PATTERN.test(githubFullName);
-  const ready = nameValid && !create.isPending;
+  const cloneNameValid = NAME_PATTERN.test(githubFullName);
+  const linkPathValid = localPath.startsWith("/");
 
   const submit = () => {
-    if (!ready) return;
-    create.mutate({
-      githubFullName: githubFullName.trim(),
-      defaultBranch: defaultBranch.trim() || undefined,
-      testCommand: testCommand.trim() || undefined,
-    });
+    setSubmitError(null);
+    if (mode === "clone") {
+      if (!cloneNameValid) {
+        setSubmitError('GitHub repo must be in "owner/name" form.');
+        return;
+      }
+      create.mutate({
+        githubFullName: githubFullName.trim(),
+        defaultBranch: defaultBranch.trim() || undefined,
+        testCommand: testCommand.trim() || undefined,
+      });
+    } else {
+      if (!linkPathValid) {
+        setSubmitError("Local path must be an absolute path (start with /).");
+        return;
+      }
+      create.mutate({
+        localPath: localPath.trim(),
+        githubFullName: originOverride.trim() || undefined,
+        defaultBranch: defaultBranch.trim() || undefined,
+        testCommand: testCommand.trim() || undefined,
+      });
+    }
   };
 
   return (
@@ -44,8 +73,39 @@ export function RepoNew() {
       </Link>
       <PageHeader
         title="Register repo"
-        description="Clones the repo into ~/.agents/worktrees/<owner>__<name>/.repo. May take a moment for a fresh checkout."
+        description={
+          mode === "clone"
+            ? "Clones the repo into ~/.agents/worktrees/<owner>__<name>/.repo. May take a moment for a fresh checkout."
+            : "Links an existing local clone — no re-clone. The GitHub URL is auto-detected from the repo's `origin` remote."
+        }
       />
+
+      <div className="mb-6 max-w-2xl">
+        <div className="flex gap-1 rounded-lg border border-zinc-800 bg-zinc-950/40 p-1 text-sm">
+          <button
+            type="button"
+            onClick={() => setMode("clone")}
+            className={`flex-1 rounded-md px-3 py-1.5 transition-colors ${
+              mode === "clone"
+                ? "bg-zinc-800 text-zinc-100"
+                : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+            }`}
+          >
+            Clone from GitHub
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("link")}
+            className={`flex-1 rounded-md px-3 py-1.5 transition-colors ${
+              mode === "link"
+                ? "bg-zinc-800 text-zinc-100"
+                : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+            }`}
+          >
+            Link local clone
+          </button>
+        </div>
+      </div>
 
       {create.error && (
         <div className="mb-6 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
@@ -56,22 +116,66 @@ export function RepoNew() {
       )}
 
       <div className="max-w-2xl space-y-6">
-        <Field label="GitHub repo" hint="owner/name">
-          <input
-            type="text"
-            value={githubFullName}
-            onChange={(e) => setGithubFullName(e.target.value)}
-            placeholder="anthropic/example"
-            className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-emerald-500"
-          />
-          {githubFullName && !nameValid && (
-            <div className="mt-1 text-xs text-amber-400">
-              must be in `owner/name` form
-            </div>
-          )}
-        </Field>
+        {mode === "clone" ? (
+          <Field label="GitHub repo" hint="owner/name">
+            <input
+              type="text"
+              value={githubFullName}
+              onChange={(e) => setGithubFullName(e.target.value)}
+              placeholder="anthropic/example"
+              className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-emerald-500"
+            />
+            {githubFullName && !cloneNameValid && (
+              <div className="mt-1 text-xs text-amber-400">
+                must be in `owner/name` form
+              </div>
+            )}
+          </Field>
+        ) : (
+          <>
+            <Field
+              label="Local path"
+              hint="absolute path to an existing git checkout on your machine"
+            >
+              <input
+                type="text"
+                value={localPath}
+                onChange={(e) => setLocalPath(e.target.value)}
+                placeholder="/Users/you/code/my-project"
+                className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-emerald-500"
+              />
+              {localPath && !linkPathValid && (
+                <div className="mt-1 text-xs text-amber-400">
+                  must be an absolute path (start with `/`)
+                </div>
+              )}
+              <div className="mt-2 text-[11px] text-zinc-500">
+                The path must exist and contain a <code className="text-zinc-400">.git/</code> directory. Inside the container, paths refer to <code className="text-zinc-400">/data/&hellip;</code>; on macOS dev they're host paths.
+              </div>
+            </Field>
+            <Field
+              label="GitHub repo (override)"
+              hint="optional; auto-detected from origin URL if left blank"
+            >
+              <input
+                type="text"
+                value={originOverride}
+                onChange={(e) => setOriginOverride(e.target.value)}
+                placeholder="(auto-detect from `git config remote.origin.url`)"
+                className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 outline-none focus:border-emerald-500"
+              />
+            </Field>
+          </>
+        )}
 
-        <Field label="Default branch" hint="optional; defaults to main">
+        <Field
+          label="Default branch"
+          hint={
+            mode === "clone"
+              ? "optional; defaults to main"
+              : "optional; auto-detected from origin/HEAD if left blank"
+          }
+        >
           <input
             type="text"
             value={defaultBranch}
@@ -94,13 +198,25 @@ export function RepoNew() {
           />
         </Field>
 
+        {submitError && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            {submitError}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={submit}
-          disabled={!ready}
+          disabled={create.isPending}
           className="w-full rounded-md border border-emerald-500/60 bg-emerald-500/20 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-40"
         >
-          {create.isPending ? "Cloning…" : "Register + clone"}
+          {create.isPending
+            ? mode === "clone"
+              ? "Cloning…"
+              : "Linking…"
+            : mode === "clone"
+              ? "Register + clone"
+              : "Link local repo"}
         </button>
       </div>
     </>

@@ -23,9 +23,12 @@ export {
 export {
   ensureRepo,
   ensureWorktree,
+  linkLocalRepo,
   logPrActivity,
+  parseGithubOriginUrl,
   type EnsureRepoArgs,
   type EnsureWorktreeArgs,
+  type LinkLocalRepoArgs,
   type LogPrActivityArgs,
   type PrActivityKind,
   type PrActivityStatus,

@@ -529,7 +529,15 @@ export interface Usage {
 }
 
 export interface CreateRepoArgs {
-  githubFullName: string;
+  /**
+   * One of githubFullName or localPath is required:
+   *   - githubFullName → platform clones the repo into ~/.agents/worktrees/
+   *   - localPath      → platform links the existing checkout in place; the
+   *                      github URL is auto-detected from `origin` (override
+   *                      via githubFullName if needed).
+   */
+  githubFullName?: string;
+  localPath?: string;
   defaultBranch?: string;
   testCommand?: string;
 }
