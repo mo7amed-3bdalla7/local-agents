@@ -1,10 +1,18 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Loader2, Search, Sparkles } from "lucide-react";
+import {
+  Download,
+  ExternalLink,
+  Loader2,
+  Search,
+  Sparkles,
+} from "lucide-react";
 import { api, ApiError, type SkillSearchHit } from "../api.ts";
 import { EmptyState } from "../components/EmptyState.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
 import { ErrorBox } from "../components/ErrorBox.tsx";
+
+const RESULTS_CAP = 30;
 
 export function SkillsList() {
   const queryClient = useQueryClient();
@@ -44,6 +52,8 @@ export function SkillsList() {
     },
   });
 
+  const installedNames = new Set((data?.skills ?? []).map((s) => s.name));
+
   return (
     <>
       <PageHeader
@@ -51,7 +61,45 @@ export function SkillsList() {
         description="Filesystem-discovered SKILL.md folders. Search skills.sh to install new ones."
       />
 
-      <div className="mb-6 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+        Installed
+      </div>
+
+      {isLoading && (
+        <div className="h-16 animate-pulse rounded-lg bg-zinc-900" />
+      )}
+      {error && <ErrorBox error={error} />}
+      {data && data.skills.length === 0 && (
+        <EmptyState
+          icon={Sparkles}
+          title="No skills installed yet"
+          description={
+            "Search skills.sh below to install your first skill, or drop a SKILL.md folder under .claude/skills/ at the repo root and restart the API server."
+          }
+        />
+      )}
+      {data && data.skills.length > 0 && (
+        <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/40">
+          {data.skills.map((s) => (
+            <div
+              key={s.name}
+              className="border-b border-zinc-800 px-4 py-3 last:border-b-0"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-medium text-zinc-100">
+                  {s.name}
+                </div>
+                <span className="shrink-0 truncate font-mono text-xs text-zinc-500">
+                  {s.source}
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-zinc-400">{s.description}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-8 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
           Search skills.sh
         </div>
@@ -109,87 +157,80 @@ export function SkillsList() {
           </div>
         )}
         {submitted && search.data && search.data.skills.length > 0 && (
-          <div className="mt-3 overflow-hidden rounded-md border border-zinc-800">
-            {search.data.skills.map((hit) => {
-              const isPending =
-                install.isPending && install.variables?.id === hit.id;
-              return (
-                <div
-                  key={hit.id}
-                  className="flex items-center gap-3 border-b border-zinc-800 px-3 py-2 last:border-b-0"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-zinc-100">
-                      {hit.name}
-                    </div>
-                    <div className="truncate font-mono text-[11px] text-zinc-500">
-                      {hit.source}
-                      {hit.skillId !== hit.source && (
-                        <> · {hit.skillId}</>
-                      )}
-                      {typeof hit.installs === "number" && (
-                        <> · {hit.installs.toLocaleString()} installs</>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={install.isPending}
-                    onClick={() => {
-                      setInstallMsg(null);
-                      install.mutate(hit);
-                    }}
-                    className="inline-flex shrink-0 items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
+          <>
+            <div className="mt-3 overflow-hidden rounded-md border border-zinc-800">
+              {search.data.skills.slice(0, RESULTS_CAP).map((hit) => {
+                const isPending =
+                  install.isPending && install.variables?.id === hit.id;
+                const installed = installedNames.has(hit.name);
+                const detailsUrl = `https://skills.sh/${hit.source}/${hit.skillId}`;
+                const sourceUrl = `https://github.com/${hit.source}`;
+                return (
+                  <div
+                    key={hit.id}
+                    className="flex items-center gap-3 border-b border-zinc-800 px-3 py-2 last:border-b-0"
                   >
-                    {isPending ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <Download className="size-3.5" />
-                    )}
-                    Install
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                    <div className="min-w-0 flex-1">
+                      <a
+                        href={detailsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-sm font-medium text-zinc-100 hover:text-emerald-300"
+                        title="View skill details on skills.sh"
+                      >
+                        {hit.name}
+                        <ExternalLink className="size-3 opacity-60" />
+                      </a>
+                      <div className="truncate font-mono text-[11px] text-zinc-500">
+                        <a
+                          href={sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hover:text-zinc-300"
+                          title="Open source repo on GitHub"
+                        >
+                          {hit.source}
+                        </a>
+                        {hit.skillId !== hit.source && <> · {hit.skillId}</>}
+                        {typeof hit.installs === "number" && (
+                          <> · {hit.installs.toLocaleString()} installs</>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={install.isPending || installed}
+                      onClick={() => {
+                        setInstallMsg(null);
+                        install.mutate(hit);
+                      }}
+                      className="inline-flex shrink-0 items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
+                      title={
+                        installed
+                          ? "Already installed — see the list above"
+                          : "Install this skill"
+                      }
+                    >
+                      {isPending ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Download className="size-3.5" />
+                      )}
+                      {installed ? "Installed" : "Install"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            {search.data.skills.length > RESULTS_CAP && (
+              <div className="mt-2 text-[11px] text-zinc-500">
+                Showing top {RESULTS_CAP} of {search.data.skills.length}{" "}
+                results — refine your query to narrow.
+              </div>
+            )}
+          </>
         )}
       </div>
-
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-        Installed
-      </div>
-
-      {isLoading && (
-        <div className="h-16 animate-pulse rounded-lg bg-zinc-900" />
-      )}
-      {error && <ErrorBox error={error} />}
-      {data && data.skills.length === 0 && (
-        <EmptyState
-          icon={Sparkles}
-          title="No skills installed yet"
-          description={
-            "Search above to install from skills.sh, or drop a SKILL.md folder under .claude/skills/ at the repo root and restart the API server."
-          }
-        />
-      )}
-      {data && data.skills.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/40">
-          {data.skills.map((s) => (
-            <div
-              key={s.name}
-              className="border-b border-zinc-800 px-4 py-3 last:border-b-0"
-            >
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-medium text-zinc-100">
-                  {s.name}
-                </div>
-                <span className="text-xs text-zinc-500">{s.source}</span>
-              </div>
-              <p className="mt-0.5 text-xs text-zinc-400">{s.description}</p>
-            </div>
-          ))}
-        </div>
-      )}
     </>
   );
 }
