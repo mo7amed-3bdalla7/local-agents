@@ -10,6 +10,7 @@
  */
 
 import {
+  type AnyPgColumn,
   bigserial,
   boolean,
   index,
@@ -283,6 +284,12 @@ export const tasks = pgTable(
     workspacePath: text("workspace_path"),
     /** Run that this task spawned; lets the UI link into session timeline. */
     runId: integer("run_id"),
+    /** Forked-from pointer. Set when a task was created via /tasks/:id/rerun.
+     *  Lets the UI chain re-runs back to the original. SET NULL on parent
+     *  delete keeps the lineage row but breaks the link. */
+    parentTaskId: uuid("parent_task_id").references((): AnyPgColumn => tasks.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -291,6 +298,7 @@ export const tasks = pgTable(
   },
   (t) => ({
     ownerIdx: index("tasks_owner_idx").on(t.ownerId, t.createdAt),
+    parentIdx: index("tasks_parent_idx").on(t.parentTaskId),
   }),
 );
 

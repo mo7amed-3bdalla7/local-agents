@@ -249,6 +249,13 @@ export const api = {
       }),
     remove: (id: string) =>
       request<unknown>(`/tasks/${id}`, { method: "DELETE" }),
+    rerun: (id: string) =>
+      request<{ task: TaskWithRepos; runId: number }>(
+        `/tasks/${id}/rerun`,
+        { method: "POST" },
+      ),
+    lineage: (id: string) =>
+      request<{ lineage: TaskLineage }>(`/tasks/${id}/lineage`),
   },
   templates: {
     list: () => request<{ templates: AgentTemplate[] }>("/templates"),
@@ -373,6 +380,7 @@ export interface TaskWithRepos {
   status: "pending" | "active" | "completed" | "failed" | "aborted";
   workspacePath: string | null;
   runId: number | null;
+  parentTaskId: string | null;
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -383,6 +391,20 @@ export interface TaskWithRepos {
     localPath: string;
     position: number;
   }>;
+}
+
+export interface TaskLineageNode {
+  id: string;
+  parentTaskId: string | null;
+  title: string;
+  status: TaskWithRepos["status"];
+  createdAt: string;
+  runId: number | null;
+}
+
+export interface TaskLineage {
+  rootId: string;
+  nodes: TaskLineageNode[];
 }
 
 export interface CreateTaskArgs {

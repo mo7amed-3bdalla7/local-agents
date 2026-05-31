@@ -71,6 +71,13 @@
       "when": 1779974132680,
       "tag": "0009_nosy_stardust",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1780223730812,
+      "tag": "0010_next_master_chief",
+      "breakpoints": true
     }
   ]
 }

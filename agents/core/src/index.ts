@@ -121,13 +121,17 @@ export {
 
 export {
   createTask,
+  forkTask,
   getTask,
+  listTaskLineage,
   listTasks,
   materializeTaskWorkspace,
   removeTask,
   setTaskStatus,
   type CreateTaskArgs,
   type Task,
+  type TaskLineage,
+  type TaskLineageNode,
   type TaskWithRepos,
 } from "./tasks/index.js";
 

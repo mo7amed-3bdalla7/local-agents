@@ -14,7 +14,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, or } from "drizzle-orm";
 import { getDb, schema } from "../db/client.js";
 import { ensureRepo } from "../repos/manager.js";
 import { getUserContext } from "../user-context/index.js";
@@ -52,6 +52,7 @@ export interface CreateTaskArgs {
   title: string;
   brief: string;
   repoIds: string[];
+  parentTaskId?: string;
 }
 
 export async function createTask(args: CreateTaskArgs): Promise<Task> {
@@ -72,6 +73,7 @@ export async function createTask(args: CreateTaskArgs): Promise<Task> {
       title,
       brief,
       status: "pending",
+      parentTaskId: args.parentTaskId ?? null,
     })
     .returning();
 
@@ -165,6 +167,139 @@ export async function setTaskStatus(
     .update(schema.tasks)
     .set({ status, ...patch })
     .where(eq(schema.tasks.id, id));
+}
+
+/**
+ * Clone a task into a new row pointing at the original via parentTaskId.
+ *
+ * Inherits the original's brief, title (suffixed with "(re-run N)"), agent,
+ * and linked repos. Does NOT materialize the workspace or enqueue a run —
+ * caller is expected to do that next so it stays parallel to the normal
+ * create flow.
+ */
+export async function forkTask(
+  taskId: string,
+  ownerId: string,
+): Promise<Task> {
+  const original = await getTask(taskId, ownerId);
+  if (!original) throw new Error("task not found");
+
+  // Count existing forks off the same root so the new title is monotonic
+  // and human-readable. Root = walk parentTaskId chain to the top.
+  let rootId = original.id;
+  let cursor: Task | undefined = original;
+  while (cursor?.parentTaskId) {
+    const [parent] = await getDb()
+      .select()
+      .from(schema.tasks)
+      .where(eq(schema.tasks.id, cursor.parentTaskId))
+      .limit(1);
+    if (!parent) break;
+    rootId = parent.id;
+    cursor = parent;
+  }
+  const descendants = await listDescendantTasks(rootId);
+  const reRunNumber = descendants.length + 1; // root + N existing forks → next index
+
+  const newTask = await createTask({
+    ownerId,
+    agentId: original.agentId,
+    title: stripReRunSuffix(original.title) + ` (re-run ${reRunNumber})`,
+    brief: original.brief,
+    repoIds: original.repos
+      .sort((a, b) => a.position - b.position)
+      .map((r) => r.repoId),
+    parentTaskId: original.id,
+  });
+  return newTask;
+}
+
+function stripReRunSuffix(title: string): string {
+  return title.replace(/\s*\(re-run \d+\)\s*$/, "");
+}
+
+export interface TaskLineageNode {
+  id: string;
+  parentTaskId: string | null;
+  title: string;
+  status: Task["status"];
+  createdAt: Date;
+  runId: number | null;
+}
+
+export interface TaskLineage {
+  rootId: string;
+  /** All tasks in the lineage tree (root + every descendant), sorted oldest-first. */
+  nodes: TaskLineageNode[];
+}
+
+export async function listTaskLineage(
+  taskId: string,
+  ownerId: string,
+): Promise<TaskLineage | undefined> {
+  const start = await getTask(taskId, ownerId);
+  if (!start) return undefined;
+
+  // Walk up to the root.
+  let rootId = start.id;
+  let cursor: Task | undefined = start;
+  while (cursor?.parentTaskId) {
+    const [parent] = await getDb()
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(eq(schema.tasks.id, cursor.parentTaskId), eq(schema.tasks.ownerId, ownerId)),
+      )
+      .limit(1);
+    if (!parent) break;
+    rootId = parent.id;
+    cursor = parent;
+  }
+
+  const all = await listDescendantTasks(rootId);
+  return {
+    rootId,
+    nodes: all.map((t) => ({
+      id: t.id,
+      parentTaskId: t.parentTaskId,
+      title: t.title,
+      status: t.status,
+      createdAt: t.createdAt,
+      runId: t.runId,
+    })),
+  };
+}
+
+/** Root + every transitive descendant, sorted oldest-first by createdAt. */
+async function listDescendantTasks(rootId: string): Promise<Task[]> {
+  const db = getDb();
+  const collected: Task[] = [];
+  const seen = new Set<string>();
+  let frontier = [rootId];
+
+  while (frontier.length > 0) {
+    const batch = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        or(
+          ...frontier.map((id) => eq(schema.tasks.id, id)),
+          ...frontier.map((id) => eq(schema.tasks.parentTaskId, id)),
+        ),
+      );
+    const nextFrontier: string[] = [];
+    for (const t of batch) {
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      collected.push(t);
+      nextFrontier.push(t.id);
+    }
+    // Drop frontier IDs we already had (they were the seed) to avoid re-querying.
+    frontier = nextFrontier.filter((id) => !frontier.includes(id));
+  }
+
+  collected.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  return collected;
 }
 
 /**

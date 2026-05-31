@@ -5,8 +5,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Briefcase, Plus, X } from "lucide-react";
-import { api, ApiError, type CreateTaskArgs } from "../api.ts";
+import { Briefcase, GitFork, Plus, RotateCcw, X } from "lucide-react";
+import { api, ApiError, type CreateTaskArgs, type TaskLineageNode } from "../api.ts";
 import { EmptyState } from "../components/EmptyState.tsx";
 import { ErrorBox } from "../components/ErrorBox.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
@@ -304,6 +304,20 @@ function TaskDetail({ id }: { id: string }) {
     },
   });
 
+  const rerun = useMutation({
+    mutationFn: () => api.tasks.rerun(id),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      navigate(`/tasks/${res.task.id}`);
+    },
+  });
+
+  const lineage = useQuery({
+    queryKey: ["task-lineage", id],
+    queryFn: () => api.tasks.lineage(id),
+    refetchInterval: 10_000,
+  });
+
   if (isLoading) {
     return <div className="h-24 animate-pulse rounded-lg bg-zinc-900" />;
   }
@@ -335,17 +349,55 @@ function TaskDetail({ id }: { id: string }) {
           </span>
         }
         actions={
-          <button
-            type="button"
-            onClick={() => {
-              if (confirm(`Delete task "${t.title}"?`)) remove.mutate();
-            }}
-            className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-sm text-rose-200 hover:bg-rose-500/20"
-          >
-            Delete
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={rerun.isPending || t.status === "pending" || t.status === "active"}
+              onClick={() => rerun.mutate()}
+              className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-40"
+              title={
+                t.status === "pending" || t.status === "active"
+                  ? "Wait for the current run to finish before re-running"
+                  : "Fork this task into a new run, inheriting brief + repos"
+              }
+            >
+              <RotateCcw className="size-4" />
+              {rerun.isPending ? "Forking…" : "Re-run"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm(`Delete task "${t.title}"?`)) remove.mutate();
+              }}
+              className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-sm text-rose-200 hover:bg-rose-500/20"
+            >
+              Delete
+            </button>
+          </div>
         }
       />
+
+      {rerun.error && (
+        <div className="mb-4 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+          Re-run failed:{" "}
+          {rerun.error instanceof ApiError
+            ? rerun.error.message
+            : String(rerun.error)}
+        </div>
+      )}
+
+      {t.parentTaskId && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-400">
+          <GitFork className="size-3.5" />
+          Forked from{" "}
+          <Link
+            to={`/tasks/${t.parentTaskId}`}
+            className="text-emerald-400 hover:underline"
+          >
+            parent task
+          </Link>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -389,6 +441,16 @@ function TaskDetail({ id }: { id: string }) {
               ))}
             </ul>
           </Section>
+
+          {lineage.data && lineage.data.lineage.nodes.length > 1 && (
+            <Section title="Run history">
+              <LineageTree
+                nodes={lineage.data.lineage.nodes}
+                rootId={lineage.data.lineage.rootId}
+                currentId={t.id}
+              />
+            </Section>
+          )}
         </div>
       </div>
     </>
@@ -410,4 +472,53 @@ function Section({
       {children}
     </div>
   );
+}
+
+function LineageTree({
+  nodes,
+  rootId,
+  currentId,
+}: {
+  nodes: TaskLineageNode[];
+  rootId: string;
+  currentId: string;
+}) {
+  // Build child index for a tree walk.
+  const childrenOf = new Map<string | null, TaskLineageNode[]>();
+  for (const n of nodes) {
+    const key = n.parentTaskId;
+    if (!childrenOf.has(key)) childrenOf.set(key, []);
+    childrenOf.get(key)!.push(n);
+  }
+  const root = nodes.find((n) => n.id === rootId);
+  if (!root) return null;
+
+  const renderNode = (node: TaskLineageNode, depth: number): React.ReactNode => {
+    const kids = childrenOf.get(node.id) ?? [];
+    return (
+      <div key={node.id}>
+        <Link
+          to={`/tasks/${node.id}`}
+          className={`flex items-center gap-2 rounded px-2 py-1 text-xs hover:bg-zinc-900 ${
+            node.id === currentId ? "bg-emerald-500/10 text-emerald-200" : "text-zinc-300"
+          }`}
+          style={{ paddingLeft: 8 + depth * 12 }}
+        >
+          {depth > 0 && (
+            <span className="font-mono text-zinc-600">└─</span>
+          )}
+          <span className="truncate">{node.title}</span>
+          <StatusBadge status={node.status} />
+          {node.runId && (
+            <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-500">
+              run #{node.runId}
+            </span>
+          )}
+        </Link>
+        {kids.map((k) => renderNode(k, depth + 1))}
+      </div>
+    );
+  };
+
+  return <div className="space-y-0.5">{renderNode(root, 0)}</div>;
 }
