@@ -184,13 +184,16 @@ export function RepoNew() {
                   <span className="font-semibold text-zinc-400">
                     Docker mode:
                   </span>{" "}
-                  the path is{" "}
-                  <em>inside the container</em>. To use host repos from a
-                  custom path, bind-mount your code dir in{" "}
-                  <code className="text-zinc-400">docker-compose.yml</code>{" "}
-                  (the api service has a commented-out example), then paste
-                  the container-side path here — e.g.{" "}
+                  your host{" "}
+                  <code className="text-zinc-400">~/workspace</code> is
+                  bind-mounted read-only at{" "}
+                  <code className="text-zinc-400">/host-repos</code> — pick a
+                  repo with the Browse button or paste e.g.{" "}
                   <code className="text-zinc-400">/host-repos/my-project</code>.
+                  To mount a different host dir, set{" "}
+                  <code className="text-zinc-400">HOST_REPOS_DIR</code> in
+                  your <code className="text-zinc-400">.env</code> and{" "}
+                  <code className="text-zinc-400">docker compose up -d</code>.
                 </div>
               </div>
             </Field>

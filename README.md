@@ -207,17 +207,16 @@ Two paths at [`/repos/new`](http://localhost:3848/repos/new) — pick whichever 
 
 ### Linking local repos in Docker mode
 
-Paths in the form are paths the **API process** sees. In dev mode (`pnpm api`) that's just host paths. In Docker mode the API runs in a container and only sees `/data/…` plus whatever you bind-mount in.
+Paths in the form are paths the **API process** sees. In dev mode (`pnpm api`) that's just host paths. In Docker mode the compose file bind-mounts your host `~/workspace` read-only into the container at `/host-repos` — so by default the Browse picker can walk `/host-repos/<your-repo>` straight away. Set `HOST_REPOS_DIR` in your `.env` to mount a different host dir:
 
-To link a host repo from a custom path, edit `docker-compose.yml` — the `api` service has a commented-out example. Add a bind mount like:
-
-```yaml
-    volumes:
-      - ./data/agents:/data
-      - ~/code:/host-repos:ro              # mount your parent code dir
+```bash
+echo 'HOST_REPOS_DIR=/Users/you/code' >> .env
+docker compose up -d
 ```
 
-Then `docker compose up -d` and paste `/host-repos/my-project` into the form. `:ro` mounts read-only — the agent can `git log` / `git diff` against the host copy but can't push back to it directly (commits still flow through `propose_action({kind:"git_commit_push"})` which clones into a task workspace anyway).
+Then in the UI either Browse… into `/host-repos/<repo>` or paste the path directly. The mount is `:ro` — agents can `git log` / `git diff` against the host copy but can't push back to it (commits still flow through `propose_action({kind:"git_commit_push"})` which clones into a task workspace anyway). Drop `:ro` in `docker-compose.yml` if you want agents to be able to `git fetch` against the host copy.
+
+Skills installed via the UI also persist now: `./.claude/skills` on the host is bind-mounted at `/app/.claude/skills`, so `npx skills add` from the Skills page lands in your repo's `.claude/skills/` and survives `docker compose down`.
 
 ## Creating a new agent
 

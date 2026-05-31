@@ -60,24 +60,15 @@ services:
       # Persists secrets store, task workspaces, agent run logs, github
       # poller state across container restarts.
       - ./data/agents:/data
-      # ----- Link local repos from your host machine ----------------------
-      # Uncomment + adjust to mount your code into the container. The path
-      # on the right side is what you'll paste into the /repos/new "Link
-      # local clone" form. You can mount one parent dir (recommended) and
-      # link individual repos under it, or mount each repo individually.
-      #
-      # Examples:
-      #   - ${HOST_REPOS_DIR:-~/workspace}:/host-repos:ro
-      #     → in the UI paste e.g. /host-repos/my-project
-      #
-      #   - ${HOME}/code/my-app:/repos/my-app
-      #     → in the UI paste /repos/my-app
-      #
-      # `:ro` makes the mount read-only — safer for repos you don't want
-      # the agent to write to directly (commits still flow through the
-      # propose_action approval gate either way). Drop `:ro` if you want
-      # the agent to be able to `git checkout`/`git fetch` against the
-      # host copy.
+      # Skills installed via the UI / npx land here. Bind-mounted so
+      # they survive container rebuilds and can be committed.
+      - ./.claude/skills:/app/.claude/skills
+      # Mount host repos read-only into /host-repos so they show up in
+      # the /repos/new Browse picker. Override the source dir with
+      # HOST_REPOS_DIR (default: ~/workspace). Drop `:ro` if you want
+      # agents to `git fetch` / `git checkout` against the host copy —
+      # commits still flow through propose_action either way.
+      - ${HOST_REPOS_DIR:-${HOME}/workspace}:/host-repos:ro
     depends_on:
       db:
         condition: service_healthy
