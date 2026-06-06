@@ -46,7 +46,7 @@ export function ContextPage() {
     <>
       <PageHeader
         title="Context"
-        description="One markdown document that gets materialized as CONTEXT.md at the root of every task workspace you create. Use it for coding style, on-call rotation, sprint goals, project glossary — anything your agents should know across every repo. Per-repo conventions still live in each repo's AGENTS.md/CLAUDE.md."
+        description="One markdown document that gets materialized as CONTEXT.md at the root of every task workspace you create. Use it for coding style, on-call rotation, sprint goals, project glossary — anything your agents should know across every repo. For conventions scoped to a single repo, set a per-repo CONTEXT.md from the Repos page; repo-specific docs (AGENTS.md/CLAUDE.md) committed in each repo still take precedence on project details."
         actions={
           <button
             type="button"

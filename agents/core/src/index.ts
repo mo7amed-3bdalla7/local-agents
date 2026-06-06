@@ -120,6 +120,14 @@ export {
 } from "./user-context/index.js";
 
 export {
+  deleteRepoContext,
+  getRepoContext,
+  getRepoContexts,
+  setRepoContext,
+  type RepoContext,
+} from "./repo-context/index.js";
+
+export {
   createTask,
   forkTask,
   getTask,
