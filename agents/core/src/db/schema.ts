@@ -559,6 +559,20 @@ export const worktrees = pgTable(
   }),
 );
 
+// Per-repo CONTEXT.md — the repo-scoped sibling of `user_contexts`. One row
+// per repo; materialized as CONTEXT.md at the root of that repo's checkout in
+// every task workspace. Use it for repo-specific conventions the user doesn't
+// want to commit into the repo's own AGENTS.md/CLAUDE.md.
+export const repoContexts = pgTable("repo_contexts", {
+  repoId: uuid("repo_id")
+    .primaryKey()
+    .references(() => repos.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // ---------------------------------------------------------------------------
 // Secrets — pointers to OS keychain entries
 // ---------------------------------------------------------------------------

@@ -223,6 +223,15 @@ export const api = {
       }),
     remove: (id: string) =>
       request<unknown>(`/repos/${id}`, { method: "DELETE" }),
+    getContext: (id: string) =>
+      request<{ body: string; updatedAt: string | null }>(
+        `/repos/${id}/context`,
+      ),
+    setContext: (id: string, body: string) =>
+      request<{ body: string; updatedAt: string | null }>(
+        `/repos/${id}/context`,
+        { method: "PUT", body: JSON.stringify({ body }) },
+      ),
   },
   usage: {
     get: (days?: number) =>

@@ -8,16 +8,19 @@
  * `.claude/skills/<name>/SKILL.md`. Editing them happens in the file.
  */
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   addConnector,
   addMcpServer,
+  deleteRepoContext,
   ensureRepo,
+  getRepoContext,
   linkLocalRepo,
   getDb,
   removeConnector,
   schema,
+  setRepoContext,
   testConnector,
   testMcpServer,
   type McpTransport,
@@ -496,6 +499,47 @@ reposRouter.post("/", async (c) => {
       400,
     );
   }
+});
+
+/**
+ * Per-repo CONTEXT.md. GET returns the current body ("" when unset); PUT
+ * upserts, and an empty/whitespace body deletes the row so no empty CONTEXT.md
+ * gets materialized. Both require the repo to belong to the caller.
+ */
+async function ownedRepo(c: Context, id: string) {
+  const [repo] = await getDb()
+    .select()
+    .from(schema.repos)
+    .where(and(eq(schema.repos.id, id), eq(schema.repos.ownerId, currentUserId(c))))
+    .limit(1);
+  return repo;
+}
+
+reposRouter.get("/:id/context", async (c) => {
+  const id = c.req.param("id");
+  if (!isUuid(id)) return c.json({ error: "invalid_id" }, 400);
+  if (!(await ownedRepo(c, id))) return c.json({ error: "repo not found" }, 404);
+  const row = await getRepoContext(id);
+  return c.json({ body: row?.body ?? "", updatedAt: row?.updatedAt ?? null });
+});
+
+reposRouter.put("/:id/context", async (c) => {
+  const id = c.req.param("id");
+  if (!isUuid(id)) return c.json({ error: "invalid_id" }, 400);
+  if (!(await ownedRepo(c, id))) return c.json({ error: "repo not found" }, 404);
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "invalid_body" }, 400);
+  }
+  const text = typeof body.body === "string" ? body.body : "";
+  if (!text.trim()) {
+    await deleteRepoContext(id);
+    return c.json({ body: "", updatedAt: null });
+  }
+  const row = await setRepoContext(id, text);
+  return c.json({ body: row.body, updatedAt: row.updatedAt });
 });
 
 reposRouter.delete("/:id", async (c) => {

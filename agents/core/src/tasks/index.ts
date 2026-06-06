@@ -10,7 +10,7 @@
 
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -18,6 +18,7 @@ import { and, asc, desc, eq, or } from "drizzle-orm";
 import { getDb, schema } from "../db/client.js";
 import { ensureRepo } from "../repos/manager.js";
 import { getUserContext } from "../user-context/index.js";
+import { getRepoContexts } from "../repo-context/index.js";
 import { getAgentMemory } from "../agent-memory/index.js";
 
 const exec = promisify(execFile);
@@ -303,6 +304,46 @@ async function listDescendantTasks(rootId: string): Promise<Task[]> {
 }
 
 /**
+ * Write a repo's CONTEXT.md into its checkout at `dest`, unless the repo
+ * already tracks a file by that name (in which case we leave it alone to
+ * avoid clobbering a committed file). The file is appended to the clone's
+ * `.git/info/exclude` so it stays untracked and can't be staged into a
+ * commit/push by accident.
+ */
+async function materializeRepoContext(
+  dest: string,
+  body: string,
+): Promise<void> {
+  // If CONTEXT.md is tracked in the repo, don't overwrite it.
+  const tracked = await exec("git", [
+    "-C",
+    dest,
+    "ls-files",
+    "--error-unmatch",
+    "CONTEXT.md",
+  ]).then(
+    () => true,
+    () => false,
+  );
+  if (tracked) return;
+
+  await writeFile(join(dest, "CONTEXT.md"), body, "utf-8");
+
+  // Keep it out of git: add to the clone-local exclude file (idempotent).
+  const excludePath = join(dest, ".git", "info", "exclude");
+  let existing = "";
+  try {
+    existing = await readFile(excludePath, "utf-8");
+  } catch {
+    // .git/info/exclude may not exist yet (it normally does for a clone).
+  }
+  if (!existing.split("\n").some((l) => l.trim() === "CONTEXT.md")) {
+    const prefix = existing && !existing.endsWith("\n") ? "\n" : "";
+    await appendFile(excludePath, `${prefix}CONTEXT.md\n`, "utf-8");
+  }
+}
+
+/**
  * Materialize a task's workspace on disk:
  *   $HOME/.agents/workspaces/<task-id>/
  *     ├── BRIEF.md
@@ -335,8 +376,11 @@ export async function materializeTaskWorkspace(
     "Each linked repo is checked out as a sibling directory at the workspace",
     "root. **Read CONTEXT.md** (owner-wide context) and **MEMORY.md** (your",
     "own scratchpad from prior runs) at the workspace root first if present.",
-    "Then read each touched repo's own AGENTS.md / CLAUDE.md / README.md and",
-    "match existing patterns. Stage every commit + push via",
+    "Then, for each touched repo, read the **CONTEXT.md at that repo's root**",
+    "(repo-specific platform context, if present) along with the repo's own",
+    "AGENTS.md / CLAUDE.md / README.md, and match existing patterns. Owner-wide",
+    "CONTEXT.md is overridden by a repo's CONTEXT.md, which is overridden by the",
+    "repo's committed docs on project-specific details. Stage every commit + push via",
     "`propose_action({kind: 'git_commit_push', ...})` — do not run `git",
     "commit` / `git push` directly. Before exiting, update MEMORY.md with",
     "any insights worth carrying forward (open questions, things you learned",
@@ -375,6 +419,10 @@ export async function materializeTaskWorkspace(
     await writeFile(join(root, "MEMORY.md"), body, "utf-8");
   }
 
+  // Per-repo CONTEXT.md bodies, fetched up front in one round-trip and
+  // materialized into each repo's checkout below.
+  const repoContexts = await getRepoContexts(task.repos.map((r) => r.repoId));
+
   // Clone each linked repo locally from the central worktree clone. Fast +
   // disconnected from origin so accidental pushes can't escape.
   for (const r of task.repos) {
@@ -383,18 +431,29 @@ export async function materializeTaskWorkspace(
     await ensureRepo({ githubFullName: r.githubFullName }).catch(() => undefined);
 
     const dest = join(root, repoDirName(r.githubFullName));
-    if (existsSync(dest)) continue;
-    try {
-      await exec("git", ["clone", r.localPath, dest]);
-      // Default-branch checkout — the central clone is detached HEAD, so
-      // we explicitly switch the new clone to the branch the user wants.
-      await exec("git", ["-C", dest, "checkout", r.defaultBranch]).catch(
-        () => undefined,
-      );
-    } catch (err) {
-      throw new Error(
-        `failed to clone ${r.githubFullName} into ${dest}: ${err instanceof Error ? err.message : String(err)}`,
-      );
+    if (!existsSync(dest)) {
+      try {
+        await exec("git", ["clone", r.localPath, dest]);
+        // Default-branch checkout — the central clone is detached HEAD, so
+        // we explicitly switch the new clone to the branch the user wants.
+        await exec("git", ["-C", dest, "checkout", r.defaultBranch]).catch(
+          () => undefined,
+        );
+      } catch (err) {
+        throw new Error(
+          `failed to clone ${r.githubFullName} into ${dest}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    // Per-repo CONTEXT.md at the repo checkout root — the repo-scoped sibling
+    // of the workspace-root CONTEXT.md. Rewritten on every materialization so
+    // edits propagate. Skipped when the repo itself tracks a CONTEXT.md so we
+    // never clobber a committed file; otherwise added to the clone's local
+    // git exclude so it can't leak into a commit/push.
+    const ctx = repoContexts.get(r.repoId);
+    if (ctx && ctx.body) {
+      await materializeRepoContext(dest, ctx.body).catch(() => undefined);
     }
   }
 

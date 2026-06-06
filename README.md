@@ -102,7 +102,7 @@ Whichever path you took above (`docker compose up -d` or `pnpm api` from source)
 | **Agents** | All visible agents, source badge (file/db), a **DRY RUN** badge if mutating tools are stripped, **Run now** + **Refine with AI** buttons on the detail page. Per-agent **Memory** editor (MEMORY.md scratchpad that persists across runs) |
 | **Templates** | Pre-built recipes you can Clone into your own db-source agents. Includes `senior-engineer`, `pr-review-lite`, `daily-digest`, `jira-triage-lite` |
 | **Tasks** | Bundle a brief + N linked repos for a single agent run. The platform clones each linked repo into a shared workspace dir + writes `BRIEF.md` + (optional) `CONTEXT.md` at the root; the agent runs with that as `cwd` |
-| **Context** | Single per-owner markdown doc materialized as `CONTEXT.md` at the root of every task workspace. The place for coding style, on-call, sprint goals, glossary — anything that should apply across every repo. Edit, save; next task picks it up |
+| **Context** | Single per-owner markdown doc materialized as `CONTEXT.md` at the root of every task workspace. The place for coding style, on-call, sprint goals, glossary — anything that should apply across every repo. Edit, save; next task picks it up. Repo-scoped conventions go in a per-repo `CONTEXT.md` (set from the **Repos** page), materialized at that repo's checkout root |
 | **Sessions** | Filterable list (status chips, agent, date range — URL-state-driven) + per-session live event timeline (typed cards) |
 | **Approvals** | Side-effecting actions agents have proposed waiting for human approval. Tabs for Pending / Executed / Rejected / Failed |
 | **Capabilities** | Self-documenting surface: every registered executor (with payload field tables + example JSON) and every notification sender. Discovery for users authoring agent prompts |
@@ -163,10 +163,11 @@ A **task** bundles a free-form brief and N linked repos into a single agent invo
    ├── MEMORY.md                      ← the agent's scratchpad from prior runs (persisted back after each run)
    ├── BRIEF.md                       ← this task's brief + linked-repo metadata
    ├── owner__repo-a/                 ← fresh local clone of repo A's default branch
+   │   └── CONTEXT.md                 ← repo A's per-repo context (when set; git-excluded)
    └── owner__repo-b/                 ← fresh local clone of repo B's default branch
    ```
    Clones are local-clones from the central worktree dir (fast — hardlinks where possible) and disconnected from origin, so accidental pushes can't escape. When the task was bridged from a github PR trigger, the linked repo is already checked out on the PR's head branch.
-5. **The agent runs with that workspace as `cwd`.** It reads CONTEXT.md → MEMORY.md → BRIEF.md → each touched repo's own `AGENTS.md`/`CLAUDE.md`/`README.md`, in that order. Before exiting, it edits MEMORY.md (via `Edit`/`Write`) with any insights worth carrying forward; the worker persists those changes after the run finishes so the next task on the same agent inherits them.
+5. **The agent runs with that workspace as `cwd`.** It reads CONTEXT.md → MEMORY.md → BRIEF.md → each touched repo's per-repo `CONTEXT.md` (when set) and the repo's own `AGENTS.md`/`CLAUDE.md`/`README.md`, in that order. Before exiting, it edits MEMORY.md (via `Edit`/`Write`) with any insights worth carrying forward; the worker persists those changes after the run finishes so the next task on the same agent inherits them.
 6. **Commits, PRs, reviews always go through `propose_action`.** The senior-engineer template instructs the agent to stage every side effect for human approval:
    - `propose_action({kind: "git_commit_push", payload: { repo, branch, message, files }})` to commit + push a branch
    - `propose_action({kind: "pr_create", payload: { repo, head, base, title, body }})` to open the PR
@@ -174,13 +175,14 @@ A **task** bundles a free-form brief and N linked repos into a single agent invo
    - `propose_action({kind: "shell_command", payload: { cmd } })` to run tests/builds in the workspace before staging anything
    A human reviews on the Approvals page before any change reaches a real remote. Direct `git commit` / `git push` / `gh pr create` from the agent is a contract violation.
 
-**Four layers of context.** A task agent sees four sources of context, smallest scope wins on project-specific patterns:
+**Five layers of context.** A task agent sees five sources of context, smallest scope wins on project-specific patterns:
 
 | Layer | Scope | Direction | Source | Lives at |
 |---|---|---|---|---|
 | `CONTEXT.md` | Per owner (cross-cutting) | static | `/context` UI | Workspace root |
 | `MEMORY.md` | Per agent (across runs) | read + write | `agent_memory` table — written by the agent during runs, persisted by the worker | Workspace root |
 | `BRIEF.md` | Per task (this requirement) | static | task `brief` field | Workspace root |
+| `CONTEXT.md` | Per repo (platform-managed) | static | `/repos` UI (`repo_contexts` table) | Each repo dir |
 | `AGENTS.md` / `CLAUDE.md` / `README.md` | Per repo (project conventions) | static | the repo itself | Each repo dir |
 
 **Branch policy.** Tasks link repos at their default branch by default. The senior-engineer can target a different branch in the `git_commit_push` payload; the github→task bridge pre-checks-out the PR's head branch when the trigger fires with `materializeTask:true`.
